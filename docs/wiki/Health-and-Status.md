@@ -56,6 +56,8 @@ fresh for **two hours**, with at most 60 seconds future-clock tolerance. An unre
 integration's heartbeat cannot freshen an old bootstrap record. Missing, inconsistent
 or stale state is unknown and blocks normal promotion. `not_installed` requires
 explicit owner confirmation, no running version and no restart still pending.
+An absence record must also have no installed version or release identity; such
+contradictory records remain unknown and block normal and emergency promotion.
 
 ## Managed integration health contract
 

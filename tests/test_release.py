@@ -115,6 +115,33 @@ def test_workflow_rejects_manipulated_or_unverified_status(bundle, field, value)
     assert not api.mutations
 
 
+@pytest.mark.parametrize("override", [False, True])
+@pytest.mark.parametrize(
+    "field,value", [("installed_version", "9.0.0"), ("release", {"release_id": 99})]
+)
+def test_contradictory_production_absence_never_bypasses_version_safety(
+    bundle, override, field, value
+):
+    b = bundle()
+    api = WorkflowAPI(b)
+    api.production["integrations"]["demo"][field] = value
+    with pytest.raises(ManagerError, match="Production is unknown"):
+        promote(
+            api,
+            api,
+            b[0].repository,
+            "THEFLDR/HomeAssistant-IntegrationManager",
+            b[0].version,
+            "demo",
+            b[0].release_id,
+            b[0].sha256,
+            override=override,
+            confirmation="THEFLDR authorizes promotion of v0.1.0",
+            environment=owner_environment(),
+        )
+    assert not api.mutations
+
+
 @pytest.mark.parametrize("target", ["metadata", "production"])
 def test_workflow_rejects_nonobject_documents_before_mutation(bundle, target):
     b = bundle()

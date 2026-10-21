@@ -63,6 +63,8 @@ def validate_production(release: Release, production: dict, domain: str) -> None
     if (
         prod.get("state") == "not_installed"
         and prod.get("owner_confirmed") is True
+        and prod.get("installed_version") is None
+        and prod.get("release") is None
         and not prod.get("running_version")
         and prod.get("restart_pending") is False
     ):
