@@ -47,6 +47,22 @@ After CI check names are finalized, prepare **an import-ready GitHub branch rule
 
 Respect legitimate GitHub author/committer attribution; do not spoof security identities or signatures. Explain unavoidable platform limitations.
 
+
+### Mandatory CI and workflow conventions (owner-approved)
+Use the following stable naming conventions:
+- Workflow `CI - Validation` in `.github/workflows/ci.yml`.
+- Workflow `Release - Publish` in `.github/workflows/release.yml`.
+- Workflow `Release - Promote` in `.github/workflows/promote.yml`.
+- Workflow `Release - Override` in `.github/workflows/override.yml` (manual `workflow_dispatch` only).
+- Exactly **one CI validation workflow with one job**, named **`CI / Validation`**, as the sole required CI status check for branch protection. Do not create three or five independent CI jobs merely to separate validation categories.
+- Within this single job, execute clearly labeled steps grouped as **Quality**, **Tests**, and **Security**. Retain all five functional validation areas: lint/formatting, unit tests, Home Assistant compatibility, integration/package checks, and security/dependency checks. Do not reduce coverage merely to reduce job count.
+- Install the Python environment and dependencies once per run, and reuse them across steps. Prefer a lean sequential pipeline; split jobs only if measured runtime or an actual technical requirement justifies it, and explain any deviation before implementation.
+- Run CI on relevant pull requests; avoid duplicate full CI on `main` after a validated merge. Keep the required check green and present for docs-only PRs by executing a lightweight successful validation path instead of skipping the entire required workflow through path filters.
+- Use concurrency cancellation for superseded PR runs; avoid redundant release-time reruns of full CI when the exact release commit has already passed validation.
+- Workflow and job names must remain stable and match the proposed ruleset JSON exactly. Pull request titles must be `PR - <branch-name>`, e.g. `PR - codex/0.1.0`.
+- Check current stable supported GitHub Actions majors, Python, HA Core and dependencies before pinning versions. Do not introduce deprecated versions; document verified compatibility.
+- Keep publish, promote and emergency override responsibilities logically distinct, but reuse common implementation for promotion and override to avoid duplicate code.
+
 ## Required acceptance evidence
 Demonstrate through tests: initial config and GitHub App authentication, repository registration, RC discovery and Sandbox install, update entity, accurate restart and health transitions, central status read/write, promotion eligibility and GitHub-side execution, Production Stable-only filtering, manual emergency override, artifact integrity, failure/recovery, uninstall, manager self-update, and no inbound webhook dependency. Clearly distinguish mocks from live HA/GitHub end-to-end tests; never claim untested external APIs or UI paths are verified.
 
