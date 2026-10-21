@@ -322,6 +322,7 @@ class PublishAPI(WorkflowAPI):
 def test_publish_once_as_draft_then_verified_immutable_rc(bundle, tmp_path, monkeypatch):
     b = bundle()
     api = PublishAPI(b)
+    api.checks[0]["details_url"] = "https://github.com/THEFLDR/DeMo/actions/runs/123/job/456"
     monkeypatch.setenv("GITHUB_SHA", b[0].commit)
     source = tmp_path / "sources/demo-0.1.0"
     result = publish(api, b[0].repository, source, "0.1.0", b[0].commit)

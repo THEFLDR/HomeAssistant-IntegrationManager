@@ -259,7 +259,7 @@ def validated_commit(api: API, repo: str, commit: str, checks: list[dict]) -> bo
         ):
             continue
         match = re.fullmatch(
-            rf"https://github\.com/{re.escape(repo)}/actions/runs/(\d+)/job/\d+",
+            rf"https://github\.com/(?ai:{re.escape(repo)})/actions/runs/(\d+)/job/\d+",
             check.get("details_url", ""),
         )
         if not match:
