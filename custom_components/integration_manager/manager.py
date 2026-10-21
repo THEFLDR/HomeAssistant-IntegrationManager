@@ -3,11 +3,14 @@
 import asyncio
 import json
 import os
+from copy import deepcopy
 from dataclasses import asdict
 from pathlib import Path
 from uuid import uuid4
 
 from homeassistant import loader
+from homeassistant.core import CoreState
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.storage import Store
 
@@ -25,11 +28,12 @@ class Manager:
         self.config = config
         self.environment = config["environment"]
         self.registry = repository(config["registry_repository"])
-        self.store = Store(hass, 1, DOMAIN, private=True)
+        self.store = Store(hass, 1, DOMAIN, private=True, atomic_writes=True)
         self.installer = Installer(Path(hass.config.config_dir))
         self.records: dict[str, Managed] = {}
         self.tombstones: dict[str, dict] = {}
         self.lock = asyncio.Lock()
+        self.storage_lock = asyncio.Lock()
         self.listeners = set()
         self.checking = False
         self.error = None
@@ -39,6 +43,7 @@ class Manager:
         self.tasks: set[asyncio.Task] = set()
         self.watched: set[str] = set()
         self.production_snapshot: dict = {}
+        self.closed = False
 
     async def load(self) -> None:
         data = await self.store.async_load() or {}
@@ -160,17 +165,42 @@ class Manager:
         }
 
     async def save(self) -> None:
-        await self.store.async_save(
-            {
-                "environment": self.environment,
-                "registry": self.registry,
-                "records": {d: r.serialize() for d, r in self.records.items()},
-                "tombstones": self.tombstones,
-                "last_check": self.last_check,
-                "last_registry": self.last_registry,
-            }
-        )
+        async with self.storage_lock:
+            await self._save_verified()
+
+    async def _save_verified(self) -> None:
+        document = {
+            "environment": self.environment,
+            "registry": self.registry,
+            "records": {d: r.serialize() for d, r in self.records.items()},
+            "tombstones": deepcopy(self.tombstones),
+            "last_check": self.last_check,
+            "last_registry": self.last_registry,
+        }
+        try:
+            commit = asyncio.create_task(self._commit_document(document))
+            try:
+                await asyncio.shield(commit)
+            except asyncio.CancelledError:
+                # Native file I/O runs in an executor and cannot be cancelled.
+                # Drain it before releasing the save lock or completing unload.
+                await commit
+                raise
+        except (ManagerError, HomeAssistantError, OSError) as err:
+            reason = "Manager state could not be durably saved; check Home Assistant storage"
+            self.failure(reason)
+            self.notify()
+            raise ManagerError(reason) from err
         self.notify()
+
+    async def _commit_document(self, document: dict) -> None:
+        if self.hass.state in (CoreState.stopping, CoreState.final_write):
+            raise ManagerError("Home Assistant is stopping")
+        await self.store.async_save(document)
+        # HA Store logs some write failures instead of raising. Its public load
+        # reads the invalidated storage after an immediate save; verify that commit.
+        if await self.store.async_load() != document:
+            raise ManagerError("Stored state does not match the intended commit")
 
     def notify(self) -> None:
         for listener in tuple(self.listeners):
@@ -316,6 +346,8 @@ class Manager:
 
     async def check(self, _now=None) -> None:
         async with self.lock:
+            if self.closed:
+                return
             self.checking = True
             self.notify()
             try:
@@ -376,6 +408,8 @@ class Manager:
 
     async def heartbeat(self, _now=None) -> None:
         async with self.lock:
+            if self.closed:
+                return
             try:
                 await self.verify()
                 await self._heartbeat()
@@ -460,6 +494,7 @@ class Manager:
         if not approved:
             raise ManagerError("Explicit repository approval is required")
         async with self.lock:
+            self._require_open()
             if domain in self.records or any(
                 r.repository.lower() == repo.lower() for r in self.records.values()
             ):
@@ -708,6 +743,7 @@ class Manager:
         if confirmation != f"production has not installed {domain}":
             raise ManagerError("Explicit owner confirmation of Production absence is required")
         async with self.lock:
+            self._require_open()
             if self.environment == "production":
                 await self.verify()
                 if domain in self.tombstones:
@@ -787,6 +823,7 @@ class Manager:
 
     async def promote(self, domain: str) -> None:
         async with self.lock:
+            self._require_open()
             await self.verify()
             await self._heartbeat()
             record = self.get(domain)
@@ -817,7 +854,7 @@ class Manager:
             self._watch(domain, request_id)
 
     def _watch(self, domain: str, request_id: str) -> None:
-        if domain in self.watched:
+        if self.closed or domain in self.watched:
             return
         self.watched.add(domain)
         task = self.hass.async_create_background_task(
@@ -889,9 +926,14 @@ class Manager:
                 await self.save()
 
     def get(self, domain: str) -> Managed:
+        self._require_open()
         if domain not in self.records:
             raise ManagerError("Integration is not registered")
         return self.records[domain]
+
+    def _require_open(self) -> None:
+        if self.closed:
+            raise ManagerError("Integration Manager is unloading; retry after reload")
 
     def failure(self, message: str) -> None:
         self.error = message
@@ -900,7 +942,12 @@ class Manager:
             own.health_boot = BOOT_ID
 
     async def close(self) -> None:
+        self.closed = True
         for task in tuple(self.tasks):
             task.cancel()
         if self.tasks:
             await asyncio.gather(*self.tasks, return_exceptions=True)
+        # Finish any already-started operation before a replacement config entry
+        # can publish newer state through another client/manager instance.
+        async with self.lock:
+            pass

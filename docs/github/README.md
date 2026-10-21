@@ -14,3 +14,10 @@ Inspect the existing provisional ruleset before importing. GitHub combines match
 rulesets; replace/reconcile overlapping requirements rather than requiring obsolete
 check names or an impossible human approval. The implementation never creates,
 imports, modifies or deletes any ruleset, branch protection or App permission.
+
+Read-only inspection on 21 October 2026 found `copilot_code_review` in the existing
+active `main` ruleset (ID `25578748`), with `review_draft_pull_requests: true` and
+`review_on_push: false`. It automatically requests review for PRs, including drafts.
+The owner must manually disable/remove that rule to match the review-budget policy.
+It remains unchanged by this implementation. The proposed JSON does not include a
+Copilot rule and keeps required CI independent of review availability.

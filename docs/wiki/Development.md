@@ -52,6 +52,17 @@ edits also trigger validation. No push-on-main duplicate or release-time automat
 Manual CI is available to establish evidence for an exact new release commit SHA.
 All PR titles must be `PR - <branch-name>`.
 
+## Review budget
+
+Do not request any further Copilot Code Review for 0.1.0. The owner-approved
+assignment update supersedes earlier review instructions. Complete Codex self-review
+and validation, then leave the PR for independent ChatGPT/owner review. For future
+PRs, a Copilot review is optional, requires explicit owner approval, and may be
+requested at most once after implementation is complete. Fixes do not authorize a
+repeat request. No workflow here requests Copilot automatically; the required
+`CI / Validation` check remains independent of review quota. Only the owner changes
+repository/Ruleset review settings.
+
 The three distinct release workflows use shared promotion code. No release is
 published, promoted, merged or deployed by running local tests. GitHub calls are
 mocked in automated tests; live App permissions and HA OS behavior require the

@@ -1,3 +1,4 @@
+import asyncio
 import os
 from dataclasses import asdict
 from unittest.mock import AsyncMock, patch
@@ -211,6 +212,97 @@ async def test_registry_invalidation_must_succeed_before_any_file_change(manager
         await manager.install("demo")
     assert not (manager.installer.components / "demo").exists()
     assert manager.get("demo").installed is None
+
+
+@pytest.mark.parametrize("raised", [False, True])
+async def test_storage_failure_aborts_before_file_mutation_and_marks_health_unhealthy(
+    manager, github, bundle, raised
+):
+    github.add(bundle())
+    await manager.register("THEFLDR/demo", "demo", True)
+    manager.get(DOMAIN).health = "healthy"
+    # Native HA Store can log a failed write and return normally. Both outcomes
+    # must fail closed instead of treating the pending transaction as persisted.
+    manager.store.async_save = AsyncMock(side_effect=OSError("write denied") if raised else None)
+    with pytest.raises(ManagerError, match="durably saved"):
+        await manager.install("demo")
+    assert not (manager.installer.components / "demo").exists()
+    assert manager.get(DOMAIN).health == "unhealthy"
+    assert "storage" in manager.error
+
+
+async def test_concurrent_state_saves_keep_latest_state_without_false_storage_failure(
+    manager, github, bundle
+):
+    github.add(bundle())
+    await manager.register("THEFLDR/demo", "demo", True)
+    record = manager.get("demo")
+    save = manager.store.async_save
+    entered, resume = asyncio.Event(), asyncio.Event()
+
+    async def pause_first_commit(document):
+        await save(document)
+        if document["records"]["demo"]["error"] == "first":
+            entered.set()
+            await resume.wait()
+
+    manager.store.async_save = pause_first_commit
+    record.error = "first"
+    first = asyncio.create_task(manager.save())
+    await entered.wait()
+    record.error = "second"
+    second = asyncio.create_task(manager.save())
+    await asyncio.sleep(0)
+    resume.set()
+    await asyncio.gather(first, second)
+    assert (await manager.store.async_load())["records"]["demo"]["error"] == "second"
+    assert manager.error is None
+
+
+async def test_unload_drains_active_operations_and_prevents_old_client_writes(manager, github):
+    entered, resume = asyncio.Event(), asyncio.Event()
+
+    async def pause_validation(_registry):
+        entered.set()
+        await resume.wait()
+
+    github.validate = pause_validation
+    operation = asyncio.create_task(manager.check())
+    await entered.wait()
+    closing = asyncio.create_task(manager.close())
+    await asyncio.sleep(0)
+    assert not closing.done()
+    resume.set()
+    await operation
+    await closing
+    before = len(github.writes)
+    await manager.check()
+    await manager.heartbeat()
+    assert len(github.writes) == before
+    with pytest.raises(ManagerError, match="unloading"):
+        await manager.register("THEFLDR/demo", "demo", True)
+
+
+async def test_cancelled_save_finishes_native_commit_before_releasing_storage(manager):
+    save = manager.store.async_save
+    entered, resume = asyncio.Event(), asyncio.Event()
+
+    async def delayed_commit(document):
+        entered.set()
+        await resume.wait()
+        await save(document)
+
+    manager.store.async_save = delayed_commit
+    manager.last_check = "2026-10-21T12:00:00+00:00"
+    task = asyncio.create_task(manager.save())
+    await entered.wait()
+    task.cancel()
+    await asyncio.sleep(0)
+    assert not task.done()
+    resume.set()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert (await manager.store.async_load())["last_check"] == manager.last_check
 
 
 async def test_crash_after_swap_reconciles_pending_identity(manager, github, bundle):

@@ -36,6 +36,13 @@ keeps both the current directory and the earlier backup. Once removal commits,
 startup completes the saved tombstone and retains the removed release's matching
 identity/fingerprints privately alongside its backup; these file details are excluded
 from the GitHub status variable. An interruption before removal rolls back cleanly.
+The manager enables native HA Store atomic writes and verifies each save through
+the supported load API. HA may log a write error without raising it; a readback
+mismatch is therefore a storage failure and blocks mutation/promotion. Operations
+also refuse to commit while HA is stopping, when Store may defer writes.
+State saves serialize their snapshots and readback. Entry unload waits for active
+operations and rejects new ones before a replacement client can publish registry
+state, preventing an old connection from overwriting the reloaded manager's status.
 
 If the manager itself cannot start, stop HA and use the owner's HA terminal/backup
 tools to preserve the failed `custom_components/integration_manager` directory and

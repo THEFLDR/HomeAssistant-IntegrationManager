@@ -1,7 +1,8 @@
 # Version 0.1.0 acceptance evidence
 
-The entire functional scope is implemented together on `codex/0.1.0`. The original
-assignment file is unchanged. The owner's supplied functional concept governs
+The entire functional scope is implemented together on `codex/0.1.0`. The owner
+maintains the assignment file; the latest review-budget update is incorporated.
+The owner's supplied functional concept governs
 metadata-only RC/Stable channels and explicit initial Production absence; its staged
 roadmap was superseded by the single-assignment request.
 
@@ -18,7 +19,7 @@ The PR records the final test count and check result.
 | Install, update, integrity, failure/recovery | Hash/path/link/special-file rejection, domain isolation, atomic replace, retained backup identity through failed replacement, interrupted move and post-swap state reconciliation |
 | Native update entity | Real platform/entity initialization, installed/running attributes, real panel WebSocket install with native progress state, and non-admin rejection |
 | Restart and health | Full-process boot gate, loaded version, exact identity, stale/old/unknown report rejection, health preserved through checks |
-| Central status | Read/write contract, size bound, ownership, serialization and explicit absent bootstrap; failure to invalidate registry prevents filesystem mutation |
+| Central status | Read/write contract, size bound, ownership and explicit absent bootstrap; verified atomic local commits, cancellation/unload serialization, and no filesystem mutation after persistence/registry failure |
 | Promotion eligibility and execution | Strict local verification/status preflight, no dispatch on failure, shared Actions checks, dispatched identity preserved through later installation, no rebuild and idempotent metadata PATCH |
 | Production channel | Stable-only >=1.0.0 filtering; 0.x Production setup blocked; stale/unknown/equal-version Production blocks promotion |
 | Emergency override | Owner + triggering actor + explicit confirmation, manual dispatch, shared immutable/integrity/version checks; Production safety preserved |
@@ -29,7 +30,7 @@ The PR records the final test count and check result.
 Ruff lint/format, Node syntax, deterministic package/branding/translation/ruleset
 contracts, actionlint 1.7.12 and the dependency audit are also run locally.
 Actionlint's downloaded binary was verified against its official release checksum.
-The complete locked pip installation was exercised. 23 owner-approved upstream
+The complete locked pip installation was exercised. 25 owner-approved upstream
 advisories remain explicitly reported and expire on **4 November 2026**; see
 [Security](../wiki/Security.md). No verification or assertions were disabled to pass.
 
@@ -59,3 +60,8 @@ advisories remain explicitly reported and expire on **4 November 2026**; see
 
 These are remaining live acceptance steps, not claims of completed external tests.
 The implementation PR must remain open and unmerged for owner review.
+
+All 15 actionable findings from the three completed Copilot reviews are addressed.
+The owner-approved review-budget policy prohibits further requests for 0.1.0.
+Final Codex self-review and CI cover the latest changes; independent ChatGPT/owner
+review remains. Copilot availability is not a required branch check.

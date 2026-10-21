@@ -31,7 +31,7 @@ The future Cloudflare certificate-management integration remains out of scope.
 On **21 October 2026**, the owner explicitly accepted temporary exceptions for exact
 stable HA 2026.10.2 pins: **Pillow 12.3.0** and **uv 0.12.23**. Fixed versions are
 Pillow 13.0.0 and uv 0.13.4, incompatible with Core's current exact declarations.
-The 23 explicit advisory IDs are in
+The 25 explicit advisory IDs are in
 [`security/dependency-exceptions.json`](../../security/dependency-exceptions.json).
 Exceptions **expire on 4 November 2026** and authorize Sandbox 0.x development only.
 
@@ -43,6 +43,11 @@ paths. The uv advisory concerns a compromised CA in its vendored trust roots. Av
 that uv bundle: use pip for documented setup, or uv's supported system/native TLS
 trust configuration with a trusted system CA store. Never disable TLS validation.
 These mitigations do not make the pinned packages vulnerability-free.
+
+Memory-corruption findings can crash HA and, where exploitable, permit code
+execution in its process. The TIFF buffer-overflow/use-after-free findings concern
+encoding to in-memory buffers; their practical exposure depends on which HA
+components invoke those encoders with attacker-influenced data.
 
 The audit scans every exact transitive lock pin without a second install/resolution,
 reports accepted findings visibly, and rejects new IDs, different versions, skipped
@@ -87,6 +92,8 @@ exception is restricted to **0.12.23**, fixed in **0.13.4**. All expire on **4 N
 | [CVE-2026-112406](https://github.com/advisories/GHSA-f2g6-542v-9j58) | pillow 12.3.0 | high | Pillow: Infinite loop in PdfParser.rewrite_pages on page tree Parent cycle | `>= 5.1.0, < 13.0.0` |
 | [CVE-2026-112399](https://github.com/advisories/GHSA-5xm2-6676-qcp9) | pillow 12.3.0 | high | Pillow: APNG background disposal allocates full canvas before decompression bomb check | `>= 8.1.0, < 13.0.0` |
 | [CVE-2026-112892](https://github.com/advisories/GHSA-gg2r-wvfm-q9rx) | pillow 12.3.0 | high | Pillow: MSP RLE decoder expands a tiny file into unbounded memory | `>= 4.1.0, < 13.0.0` |
+| [CVE-2026-112393](https://github.com/advisories/GHSA-332p-7hrc-92wf) | pillow 12.3.0 | critical | Pillow: Heap buffer overflow in _tiffWriteProc when saving TIFF to BytesIO | `>= 2.0.0, < 13.0.0` |
+| [CVE-2026-112396](https://github.com/advisories/GHSA-4rr5-89j8-mwwm) | pillow 12.3.0 | medium | Pillow: Heap use-after-free when encoding TIFF to an in-memory buffer | `>= 11.3.0, < 13.0.0` |
 
 Every entry was individually verified on **21 October 2026** against its linked GitHub Advisory Database API record and the package/version-specific PyPI vulnerability feed. The verified affected ranges above include the exact pinned dependency; the advisory records identify the fixed versions stated above. Core’s [2026.10.2 dependency metadata](https://pypi.org/pypi/homeassistant/2026.10.2/json) independently confirms that both pins are unavoidable with the selected current stable Core. The policy JSON records each source, severity, impact, affected range, verification date and justification. These are dependency exposures even though the manager does not directly invoke the affected paths.
 
