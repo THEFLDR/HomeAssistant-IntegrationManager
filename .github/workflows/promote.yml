@@ -1,0 +1,62 @@
+name: Release - Promote
+run-name: promote-${{ inputs.request_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        required: true
+        type: string
+      domain:
+        required: true
+        type: string
+      release_id:
+        required: true
+        type: string
+      sha256:
+        required: true
+        type: string
+      registry:
+        required: true
+        type: string
+      request_id:
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-promotion-${{ inputs.release_id }}
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    name: Revalidate and promote exact RC
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.14.8'
+      - name: Install locked JWT environment once
+        run: python -m pip install --require-hashes -r requirements-release.lock
+      - name: Revalidate registry, artifact, activation and health; promote metadata only
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IM_APP_ID: ${{ vars.IM_APP_ID }}
+          IM_CLIENT_ID: ${{ vars.IM_CLIENT_ID }}
+          IM_INSTALLATION_ID: ${{ vars.IM_INSTALLATION_ID }}
+          IM_APP_PRIVATE_KEY: ${{ secrets.IM_APP_PRIVATE_KEY }}
+          IM_VERSION: ${{ inputs.version }}
+          IM_DOMAIN: ${{ inputs.domain }}
+          IM_RELEASE_ID: ${{ inputs.release_id }}
+          IM_SHA256: ${{ inputs.sha256 }}
+          IM_REQUEST_REGISTRY: ${{ inputs.registry }}
+          IM_REGISTRY_REPOSITORY: THEFLDR/HomeAssistant-IntegrationManager
+        run: python scripts/release.py promote

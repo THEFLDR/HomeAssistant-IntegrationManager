@@ -1,0 +1,14 @@
+{
+  "domain": "integration_manager",
+  "name": "Integration Manager",
+  "codeowners": ["@THEFLDR"],
+  "config_flow": true,
+  "dependencies": ["http", "frontend", "panel_custom", "websocket_api"],
+  "documentation": "https://github.com/THEFLDR/HomeAssistant-IntegrationManager/tree/main/docs/wiki",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/THEFLDR/HomeAssistant-IntegrationManager/issues",
+  "requirements": [],
+  "single_config_entry": true,
+  "version": "0.1.0"
+}

@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "approved_on": "2026-10-21",
+  "expires_on": "2026-11-04",
+  "scope": "Owner-approved Sandbox 0.x development only; remove when stable Home Assistant updates its exact pins. Does not authorize Production rollout.",
+  "exceptions": [
+    {"package": "pillow", "version": "12.3.0", "id": "CVE-2026-112895", "fixed_in": "13.0.0"},
+    {"package": "pillow", "version": "12.3.0", "id": "CVE-2026-112400", "fixed_in": "13.0.0"},
+    {"package": "pillow", "version": "12.3.0", "id": "CVE-2026-112397", "fixed_in": "13.0.0"},
+    {"package": "pillow", "version": "12.3.0", "id": "CVE-2026-112896", "fixed_in": "13.0.0"},
+    {"package": "pillow", "version": "12.3.0", "id": "CVE-2026-112897", "fixed_in": "13.0.0"},
+    {"package": "pillow", "version": "12.3.0", "id": "CVE-2026-112395", "fixed_in": "13.0.0"},
+    {"package": "pillow", "version": "12.3.0", "id": "CVE-2026-112404", "fixed_in": "13.0.0"},
+    {"package": "pillow", "version": "12.3.0", "id": "CVE-2026-112899", "fixed_in": "13.0.0"},
+    {"package": "uv", "version": "0.12.23", "id": "PYSEC-2026-4321", "fixed_in": "0.13.4"},
+    {"package": "pillow", "version": "12.3.0", "id": "CVE-2026-112402", "fixed_in": "13.0.0"},
+    {"package": "pillow", "version": "12.3.0", "id": "CVE-2026-112900", "fixed_in": "13.0.0"},
+    {"package": "pillow", "version": "12.3.0", "id": "CVE-2026-112893", "fixed_in": "13.0.0"}
+  ]
+}

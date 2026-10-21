@@ -1,0 +1,77 @@
+name: CI - Validation
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validation:
+    name: CI / Validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Quality - Detect relevant changes
+        id: changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BRANCH: ${{ github.head_ref }}
+        run: |
+          if [ "$EVENT_NAME" = pull_request ] && [ "$PR_TITLE" != "PR - $PR_BRANCH" ]; then
+            echo 'Pull request title must be PR - <branch-name>' >&2
+            exit 1
+          fi
+          if [ "$EVENT_NAME" = workflow_dispatch ]; then
+            echo 'full=true' >> "$GITHUB_OUTPUT"
+          else
+            git diff --name-only "$BASE_SHA" HEAD > "$RUNNER_TEMP/im-changes"
+            if grep -vE '^(docs/|README\.md$|.*\.md$)' "$RUNNER_TEMP/im-changes" > /dev/null; then
+              echo 'full=true' >> "$GITHUB_OUTPUT"
+            else
+              echo 'full=false' >> "$GITHUB_OUTPUT"
+            fi
+          fi
+      - name: Quality - Documentation and repository contracts
+        if: steps.changes.outputs.full == 'false'
+        run: python3 scripts/check_repository.py --light
+      - name: Quality - Python 3.14
+        if: steps.changes.outputs.full == 'true'
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.14.8'
+          cache: pip
+          cache-dependency-path: requirements-dev.lock
+      - name: Quality - Install locked environment once
+        if: steps.changes.outputs.full == 'true'
+        run: python -m pip install --require-hashes -r requirements-dev.lock
+      - name: Quality - Lint, formatting and static analysis
+        if: steps.changes.outputs.full == 'true'
+        run: |
+          ruff check .
+          ruff format --check .
+          node --check custom_components/integration_manager/frontend/panel.js
+      - name: Tests - Unit and integration tests, including Home Assistant compatibility
+        if: steps.changes.outputs.full == 'true'
+        run: pytest --cov=custom_components.integration_manager --cov=scripts --cov-report=term-missing
+      - name: Tests - Package integrity and repository contracts
+        if: steps.changes.outputs.full == 'true'
+        run: python scripts/check_repository.py
+      - name: Security - Code and dependency audit
+        if: steps.changes.outputs.full == 'true'
+        run: |
+          bandit -q -r custom_components scripts -c pyproject.toml
+          python scripts/audit_dependencies.py
