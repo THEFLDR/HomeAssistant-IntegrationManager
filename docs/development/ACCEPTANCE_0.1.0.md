@@ -16,7 +16,7 @@ The PR records the final test count and check result.
 | Config flow, private key, options and App JWT | Native flow initialization, private key permissions, rotation, JWT claims and single-flight token refresh |
 | Registration/approval and RC selection | Repository/domain approval, package contract, multiple eligible versions, newest/default and explicit selection |
 | Install, update, integrity, failure/recovery | Hash/path/link/special-file rejection, domain isolation, atomic replace, retained backup identity through failed replacement, interrupted move and post-swap state reconciliation |
-| Native update entity | Real platform/entity initialization, installed/running attributes, install invocation and non-admin rejection |
+| Native update entity | Real platform/entity initialization, installed/running attributes, real panel WebSocket install with native progress state, and non-admin rejection |
 | Restart and health | Full-process boot gate, loaded version, exact identity, stale/old/unknown report rejection, health preserved through checks |
 | Central status | Read/write contract, size bound, ownership, serialization and explicit absent bootstrap; failure to invalidate registry prevents filesystem mutation |
 | Promotion eligibility and execution | Strict local verification/status preflight, no dispatch on failure, shared Actions checks, dispatched identity preserved through later installation, no rebuild and idempotent metadata PATCH |
@@ -29,7 +29,7 @@ The PR records the final test count and check result.
 Ruff lint/format, Node syntax, deterministic package/branding/translation/ruleset
 contracts, actionlint 1.7.12 and the dependency audit are also run locally.
 Actionlint's downloaded binary was verified against its official release checksum.
-The complete locked pip installation was exercised. 18 owner-approved upstream
+The complete locked pip installation was exercised. 23 owner-approved upstream
 advisories remain explicitly reported and expire on **4 November 2026**; see
 [Security](../wiki/Security.md). No verification or assertions were disabled to pass.
 

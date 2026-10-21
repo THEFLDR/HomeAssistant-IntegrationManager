@@ -1,3 +1,4 @@
+import asyncio
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -35,13 +36,14 @@ async def test_manifest_loader_and_initial_config_flow(hass, pem, tmp_path):
                 "installation_id": "456",
                 "private_key": pem,
                 "environment": "sandbox",
-                "registry_repository": "THEFLDR/HomeAssistant-IntegrationManager",
+                "registry_repository": "ThEfLdR/HoMeAsSiStAnT-InTeGrAtIoNmAnAgEr",
             },
         )
     assert result["type"] == "create_entry"
     assert "private_key" not in result["data"]
     assert result["data"]["key_path"] == str(key_path)
     assert result["data"]["instance_id"]
+    assert result["data"]["registry_repository"] == "thefldr/homeassistant-integrationmanager"
     await hass.async_block_till_done()
 
 
@@ -122,8 +124,11 @@ async def test_real_websocket_authorization_and_subscription(
 
 
 async def test_full_ha_setup_native_entities_panel_and_unload(
-    hass, github, pem, tmp_path, entity_registry, hass_client
+    hass, github, bundle, pem, tmp_path, entity_registry, hass_client, hass_ws_client
 ):
+    config_dir = tmp_path / "ha"
+    await hass.async_add_executor_job(config_dir.mkdir)
+    hass.config.config_dir = str(config_dir)
     path = tmp_path / "key.pem"
     path.write_text(pem)
     entry = MockConfigEntry(
@@ -161,6 +166,35 @@ async def test_full_ha_setup_native_entities_panel_and_unload(
     assert response.status == 200 and "customElements.define" in await response.text()
     logo = await http.get("/integration_manager_static/logo.png")
     assert logo.status == 200 and (await logo.read()).startswith(b"\x89PNG")
+    github.add(bundle())
+    await manager.register("ThEfLdR/DeMo", "demo", True)
+    await hass.async_block_till_done()
+    demo_update = entity_registry.async_get_entity_id(
+        "update", DOMAIN, f"{DOMAIN}_sandbox_demo_update"
+    )
+    assert demo_update
+    entered, resume = asyncio.Event(), asyncio.Event()
+    asset = github.asset
+
+    async def paused_asset(repo, asset_id):
+        entered.set()
+        await resume.wait()
+        return await asset(repo, asset_id)
+
+    github.asset = paused_asset
+    ws = await hass_ws_client(hass)
+    await ws.send_json_auto_id(
+        {"type": "integration_manager/action", "action": "install", "domain": "demo"}
+    )
+    try:
+        await asyncio.wait_for(entered.wait(), 5)
+        assert hass.states.get(demo_update).attributes["in_progress"] is True
+    finally:
+        resume.set()
+        result = await ws.receive_json()
+        await ws.close()
+    assert result["success"], result
+    assert hass.states.get(demo_update).attributes["in_progress"] is False
     assert await hass.config_entries.async_unload(entry.entry_id)
     assert not hass.services.has_service(DOMAIN, "report_health")
 

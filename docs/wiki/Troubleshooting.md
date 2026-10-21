@@ -31,6 +31,11 @@ Restore also persists its intended identity before moving files and uses a recov
 journal. A failed second rename restores the current directory immediately; an
 interrupted committed restore reconciles the backup's identity at startup. Failed
 copies remain under `custom_components/.im-failed-*` for manual diagnosis.
+Uninstall also persists its intended transaction before moving files. A failed move
+keeps both the current directory and the earlier backup. Once removal commits,
+startup completes the saved tombstone and retains the removed release's matching
+identity/fingerprints privately alongside its backup; these file details are excluded
+from the GitHub status variable. An interruption before removal rolls back cleanly.
 
 If the manager itself cannot start, stop HA and use the owner's HA terminal/backup
 tools to preserve the failed `custom_components/integration_manager` directory and

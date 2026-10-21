@@ -31,8 +31,13 @@ def validate_promotion(release: Release, sandbox: dict, production: dict, domain
         raise ManagerError("Release must be immutable")
     version(release.version)
     status = status_entry(sandbox, "sandbox", domain)
+    identity = status.get("release")
+    if isinstance(identity, dict):
+        identity = dict(identity)
+        if isinstance(identity.get("repository"), str):
+            identity["repository"] = identity["repository"].lower()
     if (
-        status.get("release") != release.identity()
+        identity != release.identity()
         or status.get("installed_version") != release.version
         or status.get("running_version") != release.version
         or status.get("state") != "active"
@@ -48,7 +53,10 @@ def validate_promotion(release: Release, sandbox: dict, production: dict, domain
 def validate_production(release: Release, production: dict, domain: str) -> None:
     """Production version safety applies even to emergency overrides."""
     prod = status_entry(production, "production", domain)
-    if prod.get("repository") != release.repository:
+    if (
+        not isinstance(prod.get("repository"), str)
+        or prod["repository"].lower() != release.repository
+    ):
         raise ManagerError("Production repository mapping is missing or inconsistent")
     if not fresh(prod.get("updated_at"), STATUS_MAX_AGE.total_seconds()):
         raise ManagerError("Missing or stale Production integration status")
@@ -64,7 +72,6 @@ def validate_production(release: Release, production: dict, domain: str) -> None
         or prod.get("state") != "active"
         or prod.get("installed_version") != prod.get("running_version")
         or prod.get("restart_pending") is not False
-        or prod.get("repository") != release.repository
     ):
         raise ManagerError("Production is unknown; owner must explicitly confirm initial absence")
     if version(release.version) <= version(prod["running_version"]):

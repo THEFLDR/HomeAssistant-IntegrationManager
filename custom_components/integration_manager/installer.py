@@ -76,10 +76,17 @@ class Installer:
         if not target.exists():
             return
         tree_fingerprints(target)
-        if backup.exists():
-            shutil.rmtree(backup)
-        journal.write_text(json.dumps({"operation": "uninstall"}))
-        os.replace(target, backup)
+        previous = self.work / f"{domain}.previous-{uuid4().hex}"
+        journal.write_text(json.dumps({"operation": "uninstall", "previous_backup": previous.name}))
+        try:
+            if backup.exists():
+                os.replace(backup, previous)
+            os.replace(target, backup)
+        except OSError:
+            self.recover(domain)
+            raise
+        if previous.exists():
+            shutil.rmtree(previous)
         journal.unlink()
 
     def recover(self, domain: str) -> bool:
@@ -119,7 +126,13 @@ class Installer:
             if previous.is_symlink():
                 raise ManagerError("Symlinked recovery backup is not supported")
         committed = target.exists() and stage is not None and not stage.exists()
-        if operation.get("operation") == "install" and not committed:
+        if operation.get("operation") == "uninstall":
+            if previous is not None and previous.exists():
+                if target.exists():
+                    os.replace(previous, backup)
+                else:
+                    shutil.rmtree(previous)
+        elif operation.get("operation") == "install" and not committed:
             if not target.exists() and backup.exists():
                 os.replace(backup, target)
             if previous is not None and previous.exists():

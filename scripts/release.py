@@ -376,7 +376,10 @@ def main() -> None:
         if args.operation == "override":
             verify_override(env, ver, env.get("IM_CONFIRMATION", ""))
         registry = repository(env.get("IM_REGISTRY_REPOSITORY", ""))
-        if args.operation == "promote" and env.get("IM_REQUEST_REGISTRY") != registry:
+        if (
+            args.operation == "promote"
+            and repository(env.get("IM_REQUEST_REGISTRY", "")) != registry
+        ):
             raise ManagerError("Requested registry differs from owner-configured registry")
         status_api = registry_api(env, registry)
         try:

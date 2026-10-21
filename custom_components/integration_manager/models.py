@@ -37,7 +37,7 @@ def repository(value: str) -> str:
         raise ManagerError("Expected GitHub owner/repository")
     if value.split("/")[1] in (".", ".."):
         raise ManagerError("Invalid repository")
-    return value
+    return value.lower()
 
 
 def domain_name(value: str) -> str:
@@ -59,6 +59,9 @@ class Release:
     immutable: bool
     html_url: str
     notes: str = ""
+
+    def __post_init__(self) -> None:
+        self.repository = repository(self.repository)
 
     def identity(self) -> dict:
         return {
@@ -99,6 +102,9 @@ class Managed:
     offers: list[dict] = field(default_factory=list)
     absence_confirmed: bool = False
     health_boot: str | None = None
+
+    def __post_init__(self) -> None:
+        self.repository = repository(self.repository)
 
     @classmethod
     def restore(cls, data: dict) -> Managed:

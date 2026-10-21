@@ -375,6 +375,25 @@ def test_registry_jwt_scope_is_read_only(pem):
         registry_api(environment, "THEFLDR/HomeAssistant-IntegrationManager")
         payload = api.return_value.request.call_args.args[2]
         assert payload == {
-            "repositories": ["HomeAssistant-IntegrationManager"],
+            "repositories": ["homeassistant-integrationmanager"],
             "permissions": {"contents": "read", "actions_variables": "read"},
         }
+
+
+def test_workflow_promotion_accepts_repository_case_without_weakening_identity(bundle):
+    b = bundle()
+    api = WorkflowAPI(b)
+    api.sandbox["integrations"]["demo"]["release"]["repository"] = b[0].repository.upper()
+    api.production["integrations"]["demo"]["repository"] = b[0].repository.swapcase()
+    result = promote(
+        api,
+        api,
+        b[0].repository.upper(),
+        "ThEfLdR/HomeAssistant-IntegrationManager",
+        b[0].version,
+        "demo",
+        b[0].release_id,
+        b[0].sha256,
+    )
+    assert result["release"] == b[0].identity()
+    assert len(api.mutations) == 1

@@ -136,7 +136,7 @@ async def test_bounded_asset_redirect_never_forwards_token(hass, pem, aioclient_
     github._token, github._expires = "private-placeholder", time.time() + 3600
     url = "https://release-assets.githubusercontent.com/example/package.zip?signature=synthetic"
     aioclient_mock.get(
-        f"{API}/repos/THEFLDR/demo/releases/assets/1", status=302, headers={"Location": url}
+        f"{API}/repos/thefldr/demo/releases/assets/1", status=302, headers={"Location": url}
     )
     aioclient_mock.get(url, content=b"package")
     assert await github.asset("THEFLDR/demo", 1) == b"package"
@@ -150,7 +150,7 @@ async def test_unexpected_redirect_and_override_rejected(hass, pem, aioclient_mo
     github = client(hass, pem)
     github._token, github._expires = "cached", time.time() + 3600
     aioclient_mock.get(
-        f"{API}/repos/THEFLDR/demo/releases/assets/1",
+        f"{API}/repos/thefldr/demo/releases/assets/1",
         status=302,
         headers={"Location": "https://attacker.example/package.zip"},
     )

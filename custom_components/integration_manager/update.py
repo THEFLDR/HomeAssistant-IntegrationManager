@@ -29,6 +29,7 @@ class IntegrationUpdate(UpdateEntity):
     _attr_name = "Update"
     _attr_supported_features = (
         UpdateEntityFeature.INSTALL
+        | UpdateEntityFeature.PROGRESS
         | UpdateEntityFeature.RELEASE_NOTES
         | UpdateEntityFeature.SPECIFIC_VERSION
     )

@@ -81,6 +81,7 @@ class IntegrationManagerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 )
                 key_path = await self.hass.async_add_executor_job(write_key, path, key)
                 data = {k: v for k, v in user_input.items() if k != "private_key"}
+                data["registry_repository"] = repository(data["registry_repository"])
                 data.update({"key_path": key_path, "instance_id": instance})
                 await self.async_set_unique_id(DOMAIN)
                 self._abort_if_unique_id_configured()

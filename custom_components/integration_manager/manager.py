@@ -43,11 +43,14 @@ class Manager:
     async def load(self) -> None:
         data = await self.store.async_load() or {}
         if data and (
-            data.get("environment") != self.environment or data.get("registry") != self.registry
+            data.get("environment") != self.environment
+            or repository(data.get("registry", "")) != self.registry
         ):
             raise ManagerError("Stored state belongs to a different environment or registry")
         self.records = {d: Managed.restore(r) for d, r in data.get("records", {}).items()}
         self.tombstones = data.get("tombstones", {})
+        for tombstone in self.tombstones.values():
+            tombstone["repository"] = repository(tombstone["repository"])
         self.last_check = data.get("last_check")
         self.last_registry = data.get("last_registry")
         if DOMAIN not in self.records and DOMAIN not in self.tombstones:
@@ -58,7 +61,7 @@ class Manager:
                 running_version=VERSION,
                 state="bootstrap",
             )
-        for record in self.records.values():
+        for record in list(self.records.values()):
             record.progress = 0
             recovered = await self.hass.async_add_executor_job(
                 self.installer.recover, record.domain
@@ -67,6 +70,8 @@ class Manager:
                 record.error = "Recovered an interrupted file operation; inspect retained backup"
             if record.pending:
                 await self.reconcile_pending(record)
+            if record.domain not in self.records:
+                continue
             # Health observations never survive a process restart as proof of active health.
             if record.health_boot != BOOT_ID:
                 record.health, record.health_at, record.health_release_id = "unknown", None, None
@@ -79,6 +84,16 @@ class Manager:
         """Bind committed target and backup bytes to the persisted transaction identities."""
         pending = record.pending
         if not pending:
+            return
+        if pending.get("operation") == "uninstall":
+            exists = await self.hass.async_add_executor_job(
+                os.path.lexists, self.installer.components / record.domain
+            )
+            if not pending["managed"] or not exists:
+                await self.complete_uninstall(record, pending, exists)
+            else:
+                record.error = "Interrupted uninstall rolled back; previous identity retained"
+                record.state, record.pending = "error", None
             return
         disk = await self.hass.async_add_executor_job(
             tree_fingerprints, self.installer.components / record.domain
@@ -110,6 +125,39 @@ class Manager:
             record.error = "Interrupted installation did not commit; retained previous identity"
             record.state = "error"
         record.pending = None
+
+    async def complete_uninstall(self, record: Managed, pending: dict, exists: bool) -> None:
+        backup_files = await self.hass.async_add_executor_job(
+            tree_fingerprints, self.installer.work / f"{record.domain}.backup"
+        )
+        retained = pending.get("backup_snapshot")
+        if pending.get("release") and backup_files == pending["files"]:
+            retained = {"installed": pending["release"], "files": pending["files"]}
+        elif retained and backup_files != retained["files"]:
+            retained = None
+        self.tombstones[record.domain] = {
+            "repository": record.repository,
+            "state": "unmanaged"
+            if exists
+            else "verifying"
+            if record.running_version
+            else "not_installed",
+            "owner_confirmed": not exists and not record.running_version,
+            "absence_requested": not exists,
+            "updated_at": utcnow(),
+            "running_version": record.running_version,
+            "restart_pending": bool(record.running_version),
+            "health": "unknown",
+            "backup_snapshot": retained,
+        }
+        del self.records[record.domain]
+
+    def removed_statuses(self) -> dict:
+        # File fingerprints and recovery identities stay in private HA storage.
+        return {
+            domain: {key: value for key, value in record.items() if key != "backup_snapshot"}
+            for domain, record in self.tombstones.items()
+        }
 
     async def save(self) -> None:
         await self.store.async_save(
@@ -166,7 +214,8 @@ class Manager:
             "registry_repository": self.registry,
             "integrations": integrations,
             "removed_integrations": [
-                {"domain": domain, **tombstone} for domain, tombstone in self.tombstones.items()
+                {"domain": domain, **tombstone}
+                for domain, tombstone in self.removed_statuses().items()
             ],
             "updates": sum(
                 bool(
@@ -399,11 +448,14 @@ class Manager:
             "environment": self.environment,
             "instance_id": self.config["instance_id"],
             "updated_at": utcnow(),
-            "integrations": {**self.tombstones, **{d: r.status() for d, r in self.records.items()}},
+            "integrations": {
+                **self.removed_statuses(),
+                **{d: r.status() for d, r in self.records.items()},
+            },
         }
 
     async def register(self, repo: str, domain: str, approved: bool) -> None:
-        repository(repo)
+        repo = repository(repo)
         domain_name(domain)
         if not approved:
             raise ManagerError("Explicit repository approval is required")
@@ -559,30 +611,36 @@ class Manager:
                 raise ManagerError("Explicit domain confirmation is required")
             await self.verify()
             record.state, record.health = "uninstalling", "unknown"
-            await self.save()
-            await self._heartbeat()
-            if record.installed:
-                await self.hass.async_add_executor_job(self.installer.uninstall, domain)
-            exists = await self.hass.async_add_executor_job(
-                os.path.lexists, self.installer.components / domain
-            )
-            self.tombstones[domain] = {
-                "repository": record.repository,
-                "state": "unmanaged"
-                if exists
-                else "verifying"
-                if record.running_version
-                else "not_installed",
-                "owner_confirmed": not exists and not record.running_version,
-                "absence_requested": not exists,
-                "updated_at": utcnow(),
-                "running_version": record.running_version,
-                "restart_pending": bool(record.running_version),
-                "health": "unknown",
+            record.pending = {
+                "operation": "uninstall",
+                "managed": record.installed is not None,
+                "release": record.serialize()["installed"],
+                "files": dict(record.files),
+                "backup_snapshot": record.backup_snapshot,
             }
-            del self.records[domain]
-            await self.save()
-            await self._heartbeat()
+            try:
+                await self.save()
+                await self._heartbeat()
+                if record.installed:
+                    await self.hass.async_add_executor_job(self.installer.uninstall, domain)
+                await self.reconcile_pending(record)
+                await self.save()
+                await self._heartbeat()
+            except (ManagerError, OSError) as err:
+                if domain in self.records:
+                    await self.reconcile_pending(record)
+                    record.state = "error"
+                    record.error = (
+                        str(err)
+                        if isinstance(err, ManagerError)
+                        else "Uninstall file operation failed; inspect recovery state"
+                    )
+                await self.save()
+                raise ManagerError(
+                    str(err)
+                    if isinstance(err, ManagerError)
+                    else "Uninstall file operation failed; inspect recovery state"
+                ) from err
 
     async def restore(self, domain: str, confirmation: str) -> None:
         async with self.lock:

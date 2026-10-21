@@ -50,6 +50,43 @@ def test_failed_restore_rolls_back_the_first_rename(tmp_path, monkeypatch):
     assert not journal.exists()
 
 
+def test_failed_uninstall_retains_current_and_previous_backup(tmp_path, monkeypatch):
+    installer = Installer(tmp_path)
+    installer.install("demo", {"__init__.py": b"A"}, False)
+    installer.install("demo", {"__init__.py": b"B"}, True)
+    target, backup, journal = installer.paths("demo")
+    replace = os.replace
+
+    def fail_target(source, destination):
+        if source == target:
+            raise OSError("simulated uninstall failure")
+        return replace(source, destination)
+
+    monkeypatch.setattr(os, "replace", fail_target)
+    with pytest.raises(OSError, match="uninstall failure"):
+        installer.uninstall("demo")
+    assert (target / "__init__.py").read_bytes() == b"B"
+    assert (backup / "__init__.py").read_bytes() == b"A"
+    assert not journal.exists()
+
+
+@pytest.mark.parametrize("committed", [False, True])
+def test_uninstall_journal_rolls_back_before_commit_and_completes_after(tmp_path, committed):
+    installer = Installer(tmp_path)
+    installer.install("demo", {"__init__.py": b"A"}, False)
+    installer.install("demo", {"__init__.py": b"B"}, True)
+    target, backup, journal = installer.paths("demo")
+    previous = installer.work / "demo.previous-crash"
+    journal.write_text(json.dumps({"operation": "uninstall", "previous_backup": previous.name}))
+    backup.rename(previous)
+    if committed:
+        target.rename(backup)
+    installer.recover("demo")
+    assert target.exists() is not committed
+    assert (backup / "__init__.py").read_bytes() == (b"B" if committed else b"A")
+    assert not journal.exists() and not previous.exists()
+
+
 @pytest.mark.parametrize("committed", [False, True])
 def test_restore_journal_recovers_before_and_after_commit(tmp_path, committed):
     installer = Installer(tmp_path)

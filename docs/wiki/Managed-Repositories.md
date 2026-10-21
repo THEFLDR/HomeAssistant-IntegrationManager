@@ -1,5 +1,10 @@
 # Managed repositories and packages
 
+GitHub owner/repository identifiers are normalized to lowercase at configuration,
+registration and release boundaries, including restored HA state. Promotion treats
+only repository spelling as case-insensitive; release IDs, tags, commits, asset IDs
+and hashes must still match exactly.
+
 Each approved repository maps to one integration domain. Register `owner/repository`,
 the HA domain and explicit code approval in the panel. A published immutable release
 must implement the package contract. Existing files require explicit exact-match

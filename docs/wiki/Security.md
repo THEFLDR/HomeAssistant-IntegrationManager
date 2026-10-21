@@ -31,7 +31,7 @@ The future Cloudflare certificate-management integration remains out of scope.
 On **21 October 2026**, the owner explicitly accepted temporary exceptions for exact
 stable HA 2026.10.2 pins: **Pillow 12.3.0** and **uv 0.12.23**. Fixed versions are
 Pillow 13.0.0 and uv 0.13.4, incompatible with Core's current exact declarations.
-The 18 explicit advisory IDs are in
+The 23 explicit advisory IDs are in
 [`security/dependency-exceptions.json`](../../security/dependency-exceptions.json).
 Exceptions **expire on 4 November 2026** and authorize Sandbox 0.x development only.
 
@@ -82,6 +82,11 @@ exception is restricted to **0.12.23**, fixed in **0.13.4**. All expire on **4 N
 | [CVE-2026-112390](https://github.com/advisories/GHSA-22hg-r758-rrw9) | pillow 12.3.0 | high | Pillow: Infinite loop in MIC n_frames when the embedded TIFF | `>= 7.2.0, < 13.0.0` |
 | [CVE-2026-112401](https://github.com/advisories/GHSA-74r2-7ff9-mjj2) | pillow 12.3.0 | medium | Pillow: Quadratic GIF comment concatenation allows DoS in Image.open() | `>= 5.4.0, < 13.0.0` |
 | [CVE-2026-112901](https://github.com/advisories/GHSA-xgh8-jp6q-p5x8) | pillow 12.3.0 | medium | Pillow: ReDoS in XbmImagePlugin: 512-byte file stalls Image.open() for minutes | `<= 12.3.0` |
+| [CVE-2026-112391](https://github.com/advisories/GHSA-254f-3936-288h) | pillow 12.3.0 | medium | Pillow: PdfParser can recurse without limit in get_value() and linearize_page_tree() | `>= 5.1.0, < 13.0.0` |
+| [CVE-2026-112894](https://github.com/advisories/GHSA-jg86-v3jv-hrpm) | pillow 12.3.0 | high | Pillow: Quadratic-time DoS in PDF save_all (PdfParser.next_object_id) | `>= 5.1.0, < 13.0.0` |
+| [CVE-2026-112406](https://github.com/advisories/GHSA-f2g6-542v-9j58) | pillow 12.3.0 | high | Pillow: Infinite loop in PdfParser.rewrite_pages on page tree Parent cycle | `>= 5.1.0, < 13.0.0` |
+| [CVE-2026-112399](https://github.com/advisories/GHSA-5xm2-6676-qcp9) | pillow 12.3.0 | high | Pillow: APNG background disposal allocates full canvas before decompression bomb check | `>= 8.1.0, < 13.0.0` |
+| [CVE-2026-112892](https://github.com/advisories/GHSA-gg2r-wvfm-q9rx) | pillow 12.3.0 | high | Pillow: MSP RLE decoder expands a tiny file into unbounded memory | `>= 4.1.0, < 13.0.0` |
 
 Every entry was individually verified on **21 October 2026** against its linked GitHub Advisory Database API record and the package/version-specific PyPI vulnerability feed. The verified affected ranges above include the exact pinned dependency; the advisory records identify the fixed versions stated above. Core’s [2026.10.2 dependency metadata](https://pypi.org/pypi/homeassistant/2026.10.2/json) independently confirms that both pins are unavoidable with the selected current stable Core. The policy JSON records each source, severity, impact, affected range, verification date and justification. These are dependency exposures even though the manager does not directly invoke the affected paths.
 

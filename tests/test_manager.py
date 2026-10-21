@@ -4,7 +4,11 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from custom_components.integration_manager.artifacts import fingerprints, inspect_package
+from custom_components.integration_manager.artifacts import (
+    fingerprints,
+    inspect_package,
+    tree_fingerprints,
+)
 from custom_components.integration_manager.const import DOMAIN
 from custom_components.integration_manager.models import ManagerError
 from custom_components.integration_manager.update import IntegrationUpdate
@@ -406,6 +410,54 @@ async def test_restore_crash_after_file_swap_reconciles_persisted_identity(manag
     assert record.installed.identity() == first[0].identity()
     assert record.backup_snapshot is None and record.pending is None
     assert record.state in ("verifying", "pending_restart")
+
+
+async def test_uninstall_crash_after_move_completes_persisted_transaction(manager, github, bundle):
+    github.add(bundle())
+    await manager.register("THEFLDR/demo", "demo", True)
+    await manager.install("demo")
+    manager.get("demo").install_boot = "previous-process"
+    second = bundle(ver="0.1.1", rid=11)
+    github.add(second)
+    await manager.check()
+    await manager.install("demo")
+    save = manager.save
+
+    class SimulatedPowerLoss(BaseException):
+        pass
+
+    async def crash_before_tombstone_save():
+        if "demo" not in manager.records:
+            raise SimulatedPowerLoss
+        await save()
+
+    with patch.object(manager, "save", new=crash_before_tombstone_save):
+        with pytest.raises(SimulatedPowerLoss):
+            await manager.uninstall("demo", "uninstall demo")
+    await manager.load()
+    assert "demo" not in manager.records
+    tombstone = manager.tombstones["demo"]
+    assert tombstone["state"] == "not_installed" and tombstone["owner_confirmed"]
+    assert tombstone["backup_snapshot"]["installed"]["release_id"] == second[0].release_id
+    assert tombstone["backup_snapshot"]["files"] == await manager.hass.async_add_executor_job(
+        tree_fingerprints,
+        manager.installer.work / "demo.backup",
+    )
+    assert "backup_snapshot" not in manager.status_document()["integrations"]["demo"]
+
+
+async def test_stored_mixed_case_repository_identities_are_normalized(manager, github, bundle):
+    github.add(bundle())
+    await manager.register("ThEfLdR/DeMo", "demo", True)
+    await manager.install("demo")
+    data = await manager.store.async_load()
+    data["registry"] = manager.registry.upper()
+    data["records"]["demo"]["repository"] = "THEFLDR/DeMo"
+    data["records"]["demo"]["installed"]["repository"] = "THEFLDR/DeMo"
+    await manager.store.async_save(data)
+    await manager.load()
+    assert manager.get("demo").repository == "thefldr/demo"
+    assert manager.get("demo").installed.repository == "thefldr/demo"
 
 
 @pytest.mark.parametrize("same_version", [False, True])
