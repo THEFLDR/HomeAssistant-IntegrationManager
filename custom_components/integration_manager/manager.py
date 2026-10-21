@@ -1,6 +1,8 @@
 """Serialized repository operations and durable HA state; no inbound GitHub endpoints."""
 
 import asyncio
+import json
+import os
 from dataclasses import asdict
 from pathlib import Path
 from uuid import uuid4
@@ -46,6 +48,8 @@ class Manager:
             raise ManagerError("Stored state belongs to a different environment or registry")
         self.records = {d: Managed.restore(r) for d, r in data.get("records", {}).items()}
         self.tombstones = data.get("tombstones", {})
+        self.last_check = data.get("last_check")
+        self.last_registry = data.get("last_registry")
         if DOMAIN not in self.records and DOMAIN not in self.tombstones:
             self.records[DOMAIN] = Managed(
                 self.registry,
@@ -61,27 +65,44 @@ class Manager:
             if recovered:
                 record.error = "Recovered an interrupted file operation; inspect retained backup"
             if record.pending:
-                disk = await self.hass.async_add_executor_job(
-                    tree_fingerprints, self.installer.components / record.domain
-                )
-                if disk == record.pending["files"]:
-                    record.installed = Release(**record.pending["release"])
-                    record.files = record.pending["files"]
-                    record.install_boot = record.pending["boot"]
-                    record.state = "pending_restart"
-                else:
-                    record.error = (
-                        "Interrupted installation did not commit; retained previous identity"
-                    )
-                    record.state = "error"
-                record.pending = None
+                await self.reconcile_pending(record)
             # Health observations never survive a process restart as proof of active health.
-            if record.install_boot != BOOT_ID:
+            if record.health_boot != BOOT_ID:
                 record.health, record.health_at, record.health_release_id = "unknown", None, None
             if record.promotion and record.promotion.get("state") in ("dispatched", "unconfirmed"):
                 self._watch(record.domain, record.promotion["request_id"])
         await self.verify()
         await self.save()
+
+    async def reconcile_pending(self, record: Managed) -> None:
+        """Bind committed target and backup bytes to the persisted transaction identities."""
+        pending = record.pending
+        if not pending:
+            return
+        disk = await self.hass.async_add_executor_job(
+            tree_fingerprints, self.installer.components / record.domain
+        )
+        if disk == pending["files"]:
+            record.installed = Release(**pending["release"])
+            record.files = pending["files"]
+            record.install_boot = pending["boot"]
+            prospective = pending.get("backup_snapshot")
+            backup_files = await self.hass.async_add_executor_job(
+                tree_fingerprints, self.installer.work / f"{record.domain}.backup"
+            )
+            if (
+                prospective
+                and prospective.get("installed")
+                and backup_files == prospective["files"]
+            ):
+                record.backup_snapshot = prospective
+            elif record.backup_snapshot and backup_files != record.backup_snapshot["files"]:
+                record.backup_snapshot = None
+            record.state = "pending_restart"
+        else:
+            record.error = "Interrupted installation did not commit; retained previous identity"
+            record.state = "error"
+        record.pending = None
 
     async def save(self) -> None:
         await self.store.async_save(
@@ -90,6 +111,8 @@ class Manager:
                 "registry": self.registry,
                 "records": {d: r.serialize() for d, r in self.records.items()},
                 "tombstones": self.tombstones,
+                "last_check": self.last_check,
+                "last_registry": self.last_registry,
             }
         )
         self.notify()
@@ -155,6 +178,12 @@ class Manager:
                     running = str(integration.version)
             except loader.IntegrationNotLoaded:
                 pass
+            exists = await self.hass.async_add_executor_job(
+                os.path.lexists, self.installer.components / domain
+            )
+            if exists or running:
+                tombstone["owner_confirmed"] = False
+                tombstone["state"] = "unmanaged" if exists else "verifying"
             tombstone.update(
                 {
                     "running_version": running,
@@ -175,7 +204,7 @@ class Manager:
                     except loader.IntegrationNotLoaded:
                         pass
                     exists = await self.hass.async_add_executor_job(
-                        (self.installer.components / record.domain).exists
+                        os.path.lexists, self.installer.components / record.domain
                     )
                     if exists or record.running_version:
                         record.absence_confirmed = False
@@ -194,6 +223,7 @@ class Manager:
                 record.state, record.health = "error", "unhealthy"
                 record.health_at = utcnow()
                 record.health_release_id = record.installed.release_id
+                record.health_boot = BOOT_ID
                 record.error = (
                     "Installed files differ from verified package; restore backup or reinstall"
                 )
@@ -309,6 +339,7 @@ class Manager:
             )
             own.health = "healthy" if usable else "unhealthy" if missing else "unknown"
             own.health_at = utcnow()
+            own.health_boot = BOOT_ID
             own.health_release_id = own.installed.release_id if usable else None
             if usable:
                 own.state = "active"
@@ -367,12 +398,15 @@ class Manager:
                     continue
                 if metadata.get("domain") == domain:
                     package = await self.client.asset(repo, rel.asset_id)
-                    await self.hass.async_add_executor_job(inspect_package, package, metadata)
+                    package_files = await self.hass.async_add_executor_job(
+                        inspect_package, package, metadata
+                    )
+                    display_name = json.loads(package_files["manifest.json"])["name"]
                     valid.append(rel)
                     break
             if not valid:
                 raise ManagerError("No immutable release has the approved integration domain")
-            self.records[domain] = Managed(repo, domain, domain.replace("_", " ").title())
+            self.records[domain] = Managed(repo, domain, display_name)
             self.tombstones.pop(domain, None)
             await self.save()
         await self.check()
@@ -411,10 +445,12 @@ class Manager:
                 raise ManagerError("Release channel or identity changed; check again")
             if metadata["domain"] != domain:
                 raise ManagerError("Release domain mismatch")
-            if (
-                record.installed
-                and version(release.version) <= version(record.installed.version)
-                and record.state != "error"
+            if record.installed and (
+                version(release.version) < version(record.installed.version)
+                or (
+                    version(release.version) == version(record.installed.version)
+                    and record.state != "error"
+                )
             ):
                 raise ManagerError("Only newer versions may be installed")
             record.progress, record.error = 10, None
@@ -438,12 +474,22 @@ class Manager:
                     if exists and not record.installed:
                         raise ManagerError("Existing files require explicit verified adoption")
                 was_managed = record.installed is not None
-                record.backup_snapshot = {
-                    "installed": record.serialize()["installed"],
-                    "files": dict(record.files),
+                prospective_backup = (
+                    record.backup_snapshot
+                    if adopt
+                    else {
+                        "installed": record.serialize()["installed"],
+                        "files": dict(record.files),
+                    }
+                )
+                record.pending = {
+                    "release": asdict(release),
+                    "files": expected,
+                    "boot": BOOT_ID,
+                    "backup_snapshot": prospective_backup,
                 }
-                record.pending = {"release": asdict(release), "files": expected, "boot": BOOT_ID}
                 record.state, record.health, record.health_at = "downloaded", "unknown", None
+                record.health_release_id, record.health_boot = None, None
                 await self.save()  # Persist intended identity before the atomic replacement.
                 # Invalidate prior promotion eligibility remotely before touching installed files.
                 await self._heartbeat()
@@ -452,7 +498,10 @@ class Manager:
                         self.installer.install, domain, files, was_managed
                     )
                 record.installed, record.files, record.install_boot = release, expected, BOOT_ID
+                record.backup_snapshot = prospective_backup
                 record.pending = None
+                record.state, record.progress = "installed", 75
+                await self.save()
                 record.state, record.progress = "pending_restart", 100
                 if adopt:
                     record.install_boot = "verified-adoption"
@@ -460,6 +509,7 @@ class Manager:
                 await self.save()
                 await self._heartbeat()
             except (ManagerError, OSError) as err:
+                await self.reconcile_pending(record)
                 record.error = (
                     str(err)
                     if isinstance(err, ManagerError)
@@ -477,15 +527,19 @@ class Manager:
             record = self.get(domain)
             if confirmation != f"uninstall {domain}":
                 raise ManagerError("Explicit domain confirmation is required")
+            await self.verify()
             record.state, record.health = "uninstalling", "unknown"
             await self.save()
             await self._heartbeat()
             if record.installed:
                 await self.hass.async_add_executor_job(self.installer.uninstall, domain)
+            exists = await self.hass.async_add_executor_job(
+                os.path.lexists, self.installer.components / domain
+            )
             self.tombstones[domain] = {
                 "repository": record.repository,
-                "state": "not_installed",
-                "owner_confirmed": True,
+                "state": "unmanaged" if exists else "not_installed",
+                "owner_confirmed": not exists and not record.running_version,
                 "updated_at": utcnow(),
                 "running_version": record.running_version,
                 "restart_pending": bool(record.running_version),
@@ -500,13 +554,19 @@ class Manager:
             record = self.get(domain)
             if confirmation != f"restore {domain}":
                 raise ManagerError("Explicit restore confirmation is required")
+            backup = record.backup_snapshot
+            actual = await self.hass.async_add_executor_job(
+                tree_fingerprints, self.installer.work / f"{domain}.backup"
+            )
+            if not backup or not backup.get("installed") or actual != backup["files"]:
+                raise ManagerError("Retained backup does not match its verified identity")
             record.state, record.health = "restoring", "unknown"
             await self.save()
             await self._heartbeat()
             await self.hass.async_add_executor_job(self.installer.restore, domain)
-            backup = record.backup_snapshot or {}
             record.installed = Release(**backup["installed"]) if backup.get("installed") else None
             record.files = backup.get("files", {})
+            record.backup_snapshot, record.pending = None, None
             record.install_boot = BOOT_ID
             record.state, record.health = "pending_restart", "unknown"
             record.error = "Backup restored; restart HA and verify activation"
@@ -532,6 +592,7 @@ class Manager:
             ):
                 raise ManagerError("Health observation does not match an activated release")
             record.health, record.health_at, record.health_release_id = health, utcnow(), release_id
+            record.health_boot = BOOT_ID
             record.state = "active"
             await self.save()
             await self._heartbeat()
@@ -609,7 +670,7 @@ class Manager:
         async with self.lock:
             record = self.get(domain)
             await self.promotion_eligibility(domain)
-            if record.promotion and record.promotion.get("state") == "dispatched":
+            if record.promotion and record.promotion.get("state") in ("dispatched", "unconfirmed"):
                 raise ManagerError("Promotion is already in progress")
             request_id = uuid4().hex
             await self.client.dispatch(
@@ -628,6 +689,7 @@ class Manager:
                 "state": "dispatched",
                 "request_id": request_id,
                 "requested_at": utcnow(),
+                "release": asdict(record.installed),
                 "error": None,
             }
             await self.save()
@@ -650,9 +712,16 @@ class Manager:
                 await asyncio.sleep(5)
                 async with self.lock:
                     record = self.get(domain)
+                    if not record.promotion or record.promotion.get("request_id") != request_id:
+                        return
+                    if not record.promotion.get("release"):
+                        raise ManagerError(
+                            "Promotion request lacks its dispatched release identity"
+                        )
+                    dispatched = Release(**record.promotion["release"])
                     runs = await self.client.request(
                         "GET",
-                        f"/repos/{record.repository}/actions/workflows/"
+                        f"/repos/{dispatched.repository}/actions/workflows/"
                         "promote.yml/runs?event=workflow_dispatch&per_page=30",
                     )
                     run = next(
@@ -671,15 +740,16 @@ class Manager:
                             f"Promotion workflow concluded {run['conclusion']}; inspect audit run"
                         )
                     raw = await self.client.request(
-                        "GET", f"/repos/{record.repository}/releases/{record.installed.release_id}"
+                        "GET", f"/repos/{dispatched.repository}/releases/{dispatched.release_id}"
                     )
-                    final, _ = await self.client.release(record.repository, raw)
-                    if final.prerelease or final.identity() != record.installed.identity():
+                    final, _ = await self.client.release(dispatched.repository, raw)
+                    if final.prerelease or final.identity() != dispatched.identity():
                         raise ManagerError(
                             "Workflow succeeded but final release identity/channel "
                             "verification failed"
                         )
-                    record.installed = final
+                    if record.installed and record.installed.identity() == final.identity():
+                        record.installed = final
                     if record.available and record.available.release_id == final.release_id:
                         record.available = None
                     record.offers = [
@@ -706,6 +776,7 @@ class Manager:
         self.error = message
         if own := self.records.get(DOMAIN):
             own.health, own.health_at, own.health_release_id = "unhealthy", utcnow(), None
+            own.health_boot = BOOT_ID
 
     async def close(self) -> None:
         for task in tuple(self.tasks):

@@ -23,7 +23,6 @@ async def async_setup_entry(hass, entry) -> bool:
         client = GitHubClient(
             async_get_clientsession(hass), config["app_id"], config["installation_id"], key
         )
-        await client.validate(config["registry_repository"])
         manager = Manager(hass, client, config)
         await manager.load()
     except ManagerError as err:

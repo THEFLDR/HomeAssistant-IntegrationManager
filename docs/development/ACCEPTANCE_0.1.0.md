@@ -29,7 +29,7 @@ The PR records the final test count and check result.
 Ruff lint/format, Node syntax, deterministic package/branding/translation/ruleset
 contracts, actionlint 1.7.12 and the dependency audit are also run locally.
 Actionlint's downloaded binary was verified against its official release checksum.
-The complete locked pip installation was exercised. Twelve owner-approved upstream
+The complete locked pip installation was exercised. Sixteen owner-approved upstream
 advisories remain explicitly reported and expire on **4 November 2026**; see
 [Security](../wiki/Security.md). No verification or assertions were disabled to pass.
 

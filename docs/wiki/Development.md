@@ -45,9 +45,10 @@ release package/integrity checks. Security covers Bandit and every locked depend
 with only the explicitly approved expiring upstream exceptions.
 
 Pull requests trigger CI, superseded runs cancel, dependencies install once and use
-pip cache. Docs-only PRs keep the required check present/green with lightweight
-JSON, branding, translation and ruleset contract checks, skipping dependency setup
-and full tests. No push-on-main duplicate or release-time automatic full rerun exists.
+pip cache. Both validation paths select the supported Python version. Docs-only PRs
+keep the required check present/green with lightweight JSON, branding, translation
+and ruleset contract checks, skipping dependency installation and full tests. PR title
+edits also trigger validation. No push-on-main duplicate or release-time automatic full rerun exists.
 Manual CI is available to establish evidence for an exact new release commit SHA.
 All PR titles must be `PR - <branch-name>`.
 

@@ -193,10 +193,16 @@ class GitHubClient:
             raise ManagerError("Release lacks integration.zip or integration.json")
         asset = assets[PACKAGE_NAME]
         metadata_asset = assets[METADATA_NAME]
-        metadata = json.loads(await self.asset(repo, metadata_asset["id"], maximum=65536))
+        try:
+            metadata = json.loads(await self.asset(repo, metadata_asset["id"], maximum=65536))
+        except (ValueError, UnicodeError) as err:
+            raise ManagerError("Release metadata is not valid JSON") from err
+        if not isinstance(metadata, dict):
+            raise ManagerError("Release metadata must be a JSON object")
         digest = asset.get("digest", "")
         if (
-            not digest.startswith("sha256:")
+            not isinstance(digest, str)
+            or not digest.startswith("sha256:")
             or digest != f"sha256:{metadata.get('sha256')}"
             or metadata.get("schema_version") != 1
             or metadata.get("version") != ver
@@ -237,7 +243,10 @@ class GitHubClient:
                 return {}
             raise
         try:
-            return json.loads(result["value"])
+            document = json.loads(result["value"])
+            if not isinstance(document, dict):
+                raise ValueError("Registry document must be an object")
+            return document
         except (ValueError, KeyError) as err:
             raise ManagerError(f"Invalid JSON in {name}") from err
 

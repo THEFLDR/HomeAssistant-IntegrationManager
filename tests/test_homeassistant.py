@@ -176,3 +176,39 @@ async def test_native_update_blocks_non_admin(hass, manager, hass_read_only_user
     entity.async_set_context(Context(user_id=hass_read_only_user.id))
     with pytest.raises(Unauthorized):
         await entity.async_install(None, False)
+
+
+async def test_startup_offline_keeps_cached_releases_and_management_panel(
+    hass, manager, github, bundle, pem, tmp_path
+):
+    from custom_components.integration_manager.models import ManagerError
+
+    github.add(bundle())
+    await manager.register("THEFLDR/demo", "demo", True)
+    previous_check = manager.last_check
+    await manager.save()
+    github.validate.side_effect = ManagerError("GitHub unavailable")
+    path = tmp_path / "key.pem"
+    path.write_text(pem)
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id=DOMAIN,
+        data={
+            **manager.config,
+            "app_id": "123",
+            "client_id": "example",
+            "installation_id": "456",
+            "key_path": str(path),
+        },
+    )
+    entry.add_to_hass(hass)
+    with patch("custom_components.integration_manager.github.GitHubClient", return_value=github):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+    restored = entry.runtime_data
+    assert restored.get("demo").available.version == "0.1.0"
+    assert restored.last_check == previous_check
+    assert restored.error == "GitHub unavailable"
+    assert restored.interfaces_healthy()
+    assert hass.services.has_service(DOMAIN, "report_health")
+    assert await hass.config_entries.async_unload(entry.entry_id)

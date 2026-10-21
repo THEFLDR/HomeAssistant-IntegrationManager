@@ -2,7 +2,7 @@ name: CI - Validation
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, edited]
   workflow_dispatch:
 
 permissions:
@@ -45,16 +45,15 @@ jobs:
               echo 'full=false' >> "$GITHUB_OUTPUT"
             fi
           fi
-      - name: Quality - Documentation and repository contracts
-        if: steps.changes.outputs.full == 'false'
-        run: python3 scripts/check_repository.py --light
       - name: Quality - Python 3.14
-        if: steps.changes.outputs.full == 'true'
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.14.8'
-          cache: pip
+          cache: ${{ steps.changes.outputs.full == 'true' && 'pip' || '' }}
           cache-dependency-path: requirements-dev.lock
+      - name: Quality - Documentation and repository contracts
+        if: steps.changes.outputs.full == 'false'
+        run: python scripts/check_repository.py --light
       - name: Quality - Install locked environment once
         if: steps.changes.outputs.full == 'true'
         run: python -m pip install --require-hashes -r requirements-dev.lock

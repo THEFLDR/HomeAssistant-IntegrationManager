@@ -41,6 +41,7 @@ class Installer:
         if target.exists():
             tree_fingerprints(target)  # Reject pre-existing links before touching any files.
         stage = self.components / f".im-stage-{uuid4().hex}"
+        previous = self.work / f"{domain}.previous-{uuid4().hex}"
         stage.mkdir(mode=0o700)
         try:
             for name, data in files.items():
@@ -49,17 +50,22 @@ class Installer:
                     raise ManagerError("Unsafe installation path")
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(data)
-            if backup.exists():
-                shutil.rmtree(backup)
-            journal.write_text(json.dumps({"operation": "install", "stage": stage.name}))
-            if target.exists():
-                os.replace(target, backup)
+            journal.write_text(
+                json.dumps(
+                    {"operation": "install", "stage": stage.name, "previous_backup": previous.name}
+                )
+            )
             try:
+                if backup.exists():
+                    os.replace(backup, previous)
+                if target.exists():
+                    os.replace(target, backup)
                 os.replace(stage, target)
             except OSError:
-                if backup.exists() and not target.exists():
-                    os.replace(backup, target)
+                self.recover(domain)
                 raise
+            if previous.exists():
+                shutil.rmtree(previous)
             journal.unlink()
         finally:
             if stage.exists():
@@ -81,13 +87,32 @@ class Installer:
         if not journal.exists():
             return False
         operation = json.loads(journal.read_text())
-        if operation.get("operation") == "install" and not target.exists() and backup.exists():
-            os.replace(backup, target)
         stage_name = operation.get("stage", "")
+        stage = None
         if stage_name.startswith(".im-stage-") and "/" not in stage_name and "\\" not in stage_name:
             stage = self.components / stage_name
-            if stage.exists() and not stage.is_symlink():
-                shutil.rmtree(stage)
+            if stage.is_symlink():
+                raise ManagerError("Symlinked recovery stage is not supported")
+        previous_name = operation.get("previous_backup", "")
+        previous = None
+        if (
+            previous_name.startswith(f"{domain}.previous-")
+            and "/" not in previous_name
+            and "\\" not in previous_name
+        ):
+            previous = self.work / previous_name
+            if previous.is_symlink():
+                raise ManagerError("Symlinked recovery backup is not supported")
+        committed = target.exists() and stage is not None and not stage.exists()
+        if operation.get("operation") == "install" and not committed:
+            if not target.exists() and backup.exists():
+                os.replace(backup, target)
+            if previous is not None and previous.exists():
+                os.replace(previous, backup)
+        elif previous is not None and previous.exists():
+            shutil.rmtree(previous)
+        if stage is not None and stage.exists():
+            shutil.rmtree(stage)
         journal.unlink()
         return True
 

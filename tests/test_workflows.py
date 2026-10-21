@@ -14,6 +14,14 @@ def test_ci_is_one_stable_required_check_and_docs_path_is_present():
     job = next(iter(ci["jobs"].values()))
     assert job["name"] == "CI / Validation"
     assert any("--light" in step.get("run", "") for step in job["steps"])
+    assert "edited" in ci[True]["pull_request"]["types"]
+    python_step = next(
+        i
+        for i, step in enumerate(job["steps"])
+        if step.get("uses", "").startswith("actions/setup-python@")
+    )
+    light_step = next(i for i, step in enumerate(job["steps"]) if "--light" in step.get("run", ""))
+    assert python_step < light_step and "if" not in job["steps"][python_step]
     assert len([step for step in job["steps"] if "pip install" in step.get("run", "")]) == 1
     assert ci["permissions"] == {"contents": "read"}
     assert ci["concurrency"]["cancel-in-progress"] is True

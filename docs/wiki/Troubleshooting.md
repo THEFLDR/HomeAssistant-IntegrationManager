@@ -15,11 +15,18 @@
 
 ## Recovery
 
+An existing entry starts its local panel and cached state even while GitHub is
+unavailable; the outage is shown as an error and blocks remote operations. Initial
+configuration and credential rotation still require successful authentication.
+
 The installer retains one previous domain directory in
 `.storage/integration_manager_files/<domain>.backup`. **Restore retained backup**
 requires `restore <domain>`, then a full HA restart and activation verification.
 Journal recovery restores a moved old directory when an interrupted replacement
 left no target. A hash disagreement stays an error; it is never inferred healthy.
+The previous backup survives a failed replacement. Its release identity changes
+only when the new target commits; a persisted pending transaction reconciles both
+identities after a crash. Restore checks the retained files against that identity.
 
 If the manager itself cannot start, stop HA and use the owner's HA terminal/backup
 tools to preserve the failed `custom_components/integration_manager` directory and

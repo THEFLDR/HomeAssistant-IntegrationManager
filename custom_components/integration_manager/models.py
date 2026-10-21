@@ -96,6 +96,7 @@ class Managed:
     pending: dict | None = None
     offers: list[dict] = field(default_factory=list)
     absence_confirmed: bool = False
+    health_boot: str | None = None
 
     @classmethod
     def restore(cls, data: dict) -> Managed:

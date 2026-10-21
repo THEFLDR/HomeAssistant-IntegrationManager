@@ -72,6 +72,14 @@ async def test_status_size_permissions_and_creation(hass, pem):
     assert github.request.call_count == 1
 
 
+@pytest.mark.parametrize("payload", ["[]", "null", "{broken"])
+async def test_malformed_registry_is_an_actionable_error(hass, pem, payload):
+    github = client(hass, pem)
+    github.request = AsyncMock(return_value={"value": payload})
+    with pytest.raises(ManagerError, match="Invalid JSON"):
+        await github.read_status("THEFLDR/demo", "production")
+
+
 async def test_release_identity_and_digest(hass, pem, bundle):
     release, metadata, data = bundle()
     github = client(hass, pem)
@@ -98,6 +106,23 @@ async def test_release_identity_and_digest(hass, pem, bundle):
     assert result.identity() == release.identity()
     raw["assets"][0]["digest"] = "sha256:" + "0" * 64
     with pytest.raises(ManagerError, match="digest"):
+        await github.release(release.repository, raw)
+
+
+@pytest.mark.parametrize("payload", [b"{broken", b"[]", b"null", b'"string"', b"\xff"])
+async def test_malformed_release_metadata_is_an_actionable_error(hass, pem, bundle, payload):
+    release, _, _ = bundle()
+    github = client(hass, pem)
+    github.asset = AsyncMock(return_value=payload)
+    raw = {
+        "tag_name": release.tag,
+        "immutable": True,
+        "assets": [
+            {"name": "integration.zip", "id": release.asset_id},
+            {"name": "integration.json", "id": 99},
+        ],
+    }
+    with pytest.raises(ManagerError, match="Release metadata"):
         await github.release(release.repository, raw)
 
 

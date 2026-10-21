@@ -38,7 +38,7 @@ integrations since 2026.3, and the panel. The original root asset is retained.
 
 ## Lifecycle
 
-`downloaded → pending_restart → verifying → active`, or `error`. Atomic filesystem
+`downloaded → installed → pending_restart → verifying → active`, or `error`. Atomic filesystem
 replacement is the installed milestone before pending restart, never activation.
 One retained backup and a recovery journal live under
 `.storage/integration_manager_files/`. Only the registered domain directory changes.

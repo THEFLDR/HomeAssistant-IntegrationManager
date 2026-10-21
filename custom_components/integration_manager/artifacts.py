@@ -54,6 +54,8 @@ def inspect_package(data: bytes, metadata: dict) -> dict[str, bytes]:
         manifest = json.loads(files["manifest.json"])
         if manifest["domain"] != domain or manifest["version"] != expected_version:
             raise ManagerError("Manifest domain/version does not match release")
+        if not isinstance(manifest.get("name"), str) or not manifest["name"].strip():
+            raise ManagerError("Integration manifest must have a display name")
         if "__init__.py" not in files:
             raise ManagerError("Package has no integration entry point")
         if not isinstance(manifest.get("requirements", []), list):

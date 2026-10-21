@@ -115,6 +115,25 @@ def test_workflow_rejects_manipulated_or_unverified_status(bundle, field, value)
     assert not api.mutations
 
 
+@pytest.mark.parametrize("target", ["metadata", "production"])
+def test_workflow_rejects_nonobject_documents_before_mutation(bundle, target):
+    b = bundle()
+    api = WorkflowAPI(b)
+    setattr(api, target, [])
+    with pytest.raises(ManagerError, match="JSON object|registry document"):
+        promote(
+            api,
+            api,
+            b[0].repository,
+            "THEFLDR/HomeAssistant-IntegrationManager",
+            b[0].version,
+            "demo",
+            b[0].release_id,
+            b[0].sha256,
+        )
+    assert not api.mutations
+
+
 def test_emergency_override_bypasses_health_only(bundle):
     b = bundle()
     api = WorkflowAPI(b)

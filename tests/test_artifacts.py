@@ -1,4 +1,5 @@
 import json
+import os
 import stat
 from hashlib import sha256
 from io import BytesIO
@@ -9,6 +10,47 @@ import pytest
 from custom_components.integration_manager.artifacts import inspect_package
 from custom_components.integration_manager.installer import Installer
 from custom_components.integration_manager.models import ManagerError
+
+
+def test_failed_replacement_retains_target_and_existing_backup(tmp_path, monkeypatch):
+    installer = Installer(tmp_path)
+    installer.install("demo", {"__init__.py": b"A"}, False)
+    installer.install("demo", {"__init__.py": b"B"}, True)
+    replace = os.replace
+
+    def fail_stage(source, destination):
+        if source.name.startswith(".im-stage-"):
+            raise OSError("simulated replacement failure")
+        return replace(source, destination)
+
+    monkeypatch.setattr(os, "replace", fail_stage)
+    with pytest.raises(OSError, match="replacement failure"):
+        installer.install("demo", {"__init__.py": b"C"}, True)
+    assert (installer.components / "demo/__init__.py").read_bytes() == b"B"
+    assert (installer.work / "demo.backup/__init__.py").read_bytes() == b"A"
+
+
+@pytest.mark.parametrize("committed", [False, True])
+def test_crash_recovery_preserves_the_backup_matching_the_target(tmp_path, committed):
+    installer = Installer(tmp_path)
+    installer.install("demo", {"__init__.py": b"A"}, False)
+    installer.install("demo", {"__init__.py": b"B"}, True)
+    target, backup, journal = installer.paths("demo")
+    previous = installer.work / "demo.previous-crash"
+    stage = installer.components / ".im-stage-crash"
+    stage.mkdir()
+    (stage / "__init__.py").write_bytes(b"C")
+    journal.write_text(
+        json.dumps({"operation": "install", "stage": stage.name, "previous_backup": previous.name})
+    )
+    backup.rename(previous)
+    target.rename(backup)
+    if committed:
+        stage.rename(target)
+    installer.recover("demo")
+    assert (target / "__init__.py").read_bytes() == (b"C" if committed else b"B")
+    assert (backup / "__init__.py").read_bytes() == (b"B" if committed else b"A")
+    assert not previous.exists() and not journal.exists() and not stage.exists()
 
 
 def test_package_integrity_and_contract(bundle):

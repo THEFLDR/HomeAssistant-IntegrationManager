@@ -17,7 +17,10 @@ async def test_register_install_restart_health_and_uninstall(manager, github, bu
     assert record.available.version == "0.1.0"
     entity = IntegrationUpdate(manager, "demo")
     assert entity.latest_version == "0.1.0"
+    states = []
+    manager.listen(lambda: states.append(record.state))
     await entity.async_install(None, False)
+    assert states.index("downloaded") < states.index("installed") < states.index("pending_restart")
     assert record.state == "pending_restart" and record.running_version is None
     assert record.status()["health"] == "unknown"
     with pytest.raises(ManagerError, match="activated"):
@@ -240,7 +243,7 @@ async def test_promotion_result_is_audited_and_verified(
     await manager.register(b[0].repository, "demo", True)
     await manager.install("demo")
     record = manager.get("demo")
-    record.promotion = {"state": "dispatched", "request_id": "request"}
+    record.promotion = {"state": "dispatched", "request_id": "request", "release": asdict(b[0])}
     b[0].prerelease = False
     original_request = github.request
 
@@ -265,3 +268,149 @@ async def test_promotion_result_is_audited_and_verified(
     assert record.promotion["url"].endswith("/runs/123")
     if expected == "succeeded":
         assert record.installed.prerelease is False and record.available is None
+
+
+@pytest.mark.parametrize("files_reappear", [False, True])
+async def test_absence_tombstone_never_confirms_unmanaged_files(
+    manager, github, bundle, files_reappear
+):
+    github.add(bundle())
+    manager.environment = "production"
+    await manager.register("THEFLDR/demo", "demo", True)
+    target = manager.installer.components / "demo"
+    if not files_reappear:
+        target.mkdir()
+        (target / "__init__.py").write_text("unmanaged")
+    await manager.uninstall("demo", "uninstall demo")
+    if files_reappear:
+        assert manager.tombstones["demo"]["owner_confirmed"]
+        target.mkdir()
+        (target / "__init__.py").write_text("reappeared")
+        await manager.heartbeat()
+    status = github.statuses["production"]["integrations"]["demo"]
+    assert status["state"] == "unmanaged" and not status["owner_confirmed"]
+    assert target.exists()
+
+
+@pytest.mark.parametrize("same_version", [False, True])
+async def test_failed_registry_write_preserves_backup_identity(
+    manager, github, bundle, same_version
+):
+    first = bundle()
+    github.add(first)
+    await manager.register("THEFLDR/demo", "demo", True)
+    await manager.install("demo")
+    manager.get("demo").install_boot = "previous-process"
+    github.add(bundle(ver="0.1.1", rid=11))
+    await manager.check()
+    await manager.install("demo")
+    record = manager.get("demo")
+    record.install_boot = "previous-process"
+    assert record.backup_snapshot["installed"]["version"] == "0.1.0"
+    if not same_version:
+        github.add(bundle(ver="0.1.2", rid=12))
+    await manager.check()
+    record.state = "error"
+    original_write = github.write_status
+    github.write_status = AsyncMock(side_effect=ManagerError("registry unavailable"))
+    with pytest.raises(ManagerError, match="registry unavailable"):
+        await manager.install("demo")
+    assert record.installed.version == "0.1.1"
+    assert record.backup_snapshot["installed"]["version"] == "0.1.0"
+    assert record.pending is None
+    github.write_status = original_write
+    await manager.restore("demo", "restore demo")
+    assert record.installed.identity() == first[0].identity()
+    await manager.verify()
+    assert record.state == "pending_restart"
+
+
+async def test_crash_after_update_swap_preserves_prospective_backup(manager, github, bundle):
+    first = bundle()
+    github.add(first)
+    await manager.register("THEFLDR/demo", "demo", True)
+    await manager.install("demo")
+    record = manager.get("demo")
+    second = bundle(ver="0.1.1", rid=11)
+    files = inspect_package(second[2], second[1])
+    record.pending = {
+        "release": asdict(second[0]),
+        "files": fingerprints(files),
+        "boot": "previous-process",
+        "backup_snapshot": {"installed": asdict(first[0]), "files": dict(record.files)},
+    }
+    await manager.save()
+    await manager.hass.async_add_executor_job(manager.installer.install, "demo", files, True)
+    await manager.load()
+    record = manager.get("demo")
+    assert record.installed.identity() == second[0].identity()
+    assert record.backup_snapshot["installed"]["version"] == "0.1.0"
+    await manager.restore("demo", "restore demo")
+    assert record.installed.identity() == first[0].identity()
+
+
+async def test_error_recovery_rejects_downgrade_but_allows_same_version(manager, github, bundle):
+    github.add(bundle())
+    github.add(bundle(ver="0.2.0", rid=11))
+    await manager.register("THEFLDR/demo", "demo", True)
+    await manager.install("demo")
+    record = manager.get("demo")
+    record.state = "error"
+    with pytest.raises(ManagerError, match="newer"):
+        await manager.install("demo", target_version="0.1.0")
+    await manager.install("demo", target_version="0.2.0")
+    assert record.installed.version == "0.2.0"
+
+
+async def test_promotion_verifies_dispatched_release_after_another_install(manager, github, bundle):
+    first = bundle()
+    github.add(first)
+    await manager.register("THEFLDR/demo", "demo", True)
+    await manager.install("demo")
+    record = manager.get("demo")
+    record.promotion = {"state": "dispatched", "request_id": "request", "release": asdict(first[0])}
+    record.install_boot = "previous-process"
+    second = bundle(ver="0.1.1", rid=11)
+    github.add(second)
+    await manager.check()
+    await manager.install("demo")
+    first[0].prerelease = False
+    original_request = github.request
+
+    async def request(method, path, **kwargs):
+        if "promote.yml/runs" in path:
+            return {
+                "workflow_runs": [
+                    {
+                        "display_title": "promote-request",
+                        "status": "completed",
+                        "conclusion": "success",
+                        "html_url": "https://github.com/THEFLDR/demo/actions/runs/123",
+                    }
+                ]
+            }
+        return await original_request(method, path, **kwargs)
+
+    github.request = request
+    with patch("custom_components.integration_manager.manager.asyncio.sleep", new=AsyncMock()):
+        await manager._watch_promotion("demo", "request")
+    assert record.promotion["state"] == "succeeded"
+    assert record.installed.identity() == second[0].identity()
+    assert record.installed.prerelease
+
+
+async def test_health_survives_entry_reload_but_not_process_restart(
+    manager, github, bundle, loaded
+):
+    b = bundle()
+    github.add(b)
+    await manager.register(b[0].repository, "demo", True)
+    await manager.install("demo")
+    manager.get("demo").install_boot = "previous-install-process"
+    with loaded("demo", "0.1.0"):
+        await manager.report_health("demo", "healthy", "0.1.0", b[0].release_id, b[0].sha256)
+        await manager.load()
+        assert manager.get("demo").health == "healthy"
+        with patch("custom_components.integration_manager.manager.BOOT_ID", "next-process"):
+            await manager.load()
+            assert manager.get("demo").health == "unknown"

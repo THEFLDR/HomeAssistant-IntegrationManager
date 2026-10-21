@@ -89,7 +89,13 @@ def read_status(api: API, registry: str, environment: str) -> dict:
     result = api.request(
         "GET", f"/repos/{registry}/actions/variables/IM_STATUS_{environment.upper()}"
     )
-    return json.loads(result["value"])
+    try:
+        document = json.loads(result["value"])
+        if not isinstance(document, dict):
+            raise ValueError("Registry document must be an object")
+        return document
+    except (KeyError, ValueError, TypeError) as err:
+        raise ManagerError(f"Invalid {environment} registry document") from err
 
 
 def registry_api(environment: dict, registry: str) -> API:
@@ -133,6 +139,8 @@ def load_release(api: API, repo: str, raw: dict) -> tuple[Release, dict, bytes]:
         data = api.request("GET", f"/repos/{repo}/releases/assets/{asset['id']}", binary=True)
     except (KeyError, ValueError) as err:
         raise ManagerError("Release lacks valid package assets") from err
+    if not isinstance(metadata, dict):
+        raise ManagerError("Release metadata must be a JSON object")
     digest = sha256(data).hexdigest()
     if (
         asset.get("digest") != f"sha256:{digest}"
