@@ -87,6 +87,21 @@ class Installer:
         if not journal.exists():
             return False
         operation = json.loads(journal.read_text())
+        if operation.get("operation") == "restore":
+            failed_name = operation.get("failed", "")
+            if (
+                not failed_name.startswith(".im-failed-")
+                or "/" in failed_name
+                or "\\" in failed_name
+            ):
+                raise ManagerError("Invalid restore recovery path")
+            failed = self.components / failed_name
+            if failed.is_symlink():
+                raise ManagerError("Symlinked restore recovery directory is not supported")
+            if not target.exists() and failed.exists():
+                os.replace(failed, target)
+            journal.unlink()
+            return True
         stage_name = operation.get("stage", "")
         stage = None
         if stage_name.startswith(".im-stage-") and "/" not in stage_name and "\\" not in stage_name:
@@ -117,13 +132,20 @@ class Installer:
         return True
 
     def restore(self, domain: str) -> None:
-        target, backup, _ = self.paths(domain)
+        target, backup, journal = self.paths(domain)
         if not backup.exists():
             raise ManagerError("No retained backup exists")
         tree_fingerprints(backup)
         failed = self.components / f".im-failed-{uuid4().hex}"
         if target.exists():
             tree_fingerprints(target)
-            os.replace(target, failed)
-        os.replace(backup, target)
+        journal.write_text(json.dumps({"operation": "restore", "failed": failed.name}))
+        try:
+            if target.exists():
+                os.replace(target, failed)
+            os.replace(backup, target)
+        except OSError:
+            self.recover(domain)
+            raise
+        journal.unlink()
         # Keep the failed copy for manual diagnosis; never silently remove it.

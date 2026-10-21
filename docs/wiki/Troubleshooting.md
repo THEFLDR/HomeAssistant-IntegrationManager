@@ -27,6 +27,10 @@ left no target. A hash disagreement stays an error; it is never inferred healthy
 The previous backup survives a failed replacement. Its release identity changes
 only when the new target commits; a persisted pending transaction reconciles both
 identities after a crash. Restore checks the retained files against that identity.
+Restore also persists its intended identity before moving files and uses a recovery
+journal. A failed second rename restores the current directory immediately; an
+interrupted committed restore reconciles the backup's identity at startup. Failed
+copies remain under `custom_components/.im-failed-*` for manual diagnosis.
 
 If the manager itself cannot start, stop HA and use the owner's HA terminal/backup
 tools to preserve the failed `custom_components/integration_manager` directory and

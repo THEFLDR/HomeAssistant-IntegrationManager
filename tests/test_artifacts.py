@@ -7,7 +7,7 @@ from zipfile import ZipFile, ZipInfo
 
 import pytest
 
-from custom_components.integration_manager.artifacts import inspect_package
+from custom_components.integration_manager.artifacts import inspect_package, tree_fingerprints
 from custom_components.integration_manager.installer import Installer
 from custom_components.integration_manager.models import ManagerError
 
@@ -28,6 +28,43 @@ def test_failed_replacement_retains_target_and_existing_backup(tmp_path, monkeyp
         installer.install("demo", {"__init__.py": b"C"}, True)
     assert (installer.components / "demo/__init__.py").read_bytes() == b"B"
     assert (installer.work / "demo.backup/__init__.py").read_bytes() == b"A"
+
+
+def test_failed_restore_rolls_back_the_first_rename(tmp_path, monkeypatch):
+    installer = Installer(tmp_path)
+    installer.install("demo", {"__init__.py": b"A"}, False)
+    installer.install("demo", {"__init__.py": b"B"}, True)
+    target, backup, journal = installer.paths("demo")
+    replace = os.replace
+
+    def fail_backup(source, destination):
+        if source == backup:
+            raise OSError("simulated restore failure")
+        return replace(source, destination)
+
+    monkeypatch.setattr(os, "replace", fail_backup)
+    with pytest.raises(OSError, match="restore failure"):
+        installer.restore("demo")
+    assert (target / "__init__.py").read_bytes() == b"B"
+    assert (backup / "__init__.py").read_bytes() == b"A"
+    assert not journal.exists()
+
+
+@pytest.mark.parametrize("committed", [False, True])
+def test_restore_journal_recovers_before_and_after_commit(tmp_path, committed):
+    installer = Installer(tmp_path)
+    installer.install("demo", {"__init__.py": b"A"}, False)
+    installer.install("demo", {"__init__.py": b"B"}, True)
+    target, backup, journal = installer.paths("demo")
+    failed = installer.components / ".im-failed-crash"
+    journal.write_text(json.dumps({"operation": "restore", "failed": failed.name}))
+    target.rename(failed)
+    if committed:
+        backup.rename(target)
+    installer.recover("demo")
+    assert (target / "__init__.py").read_bytes() == (b"A" if committed else b"B")
+    assert backup.exists() is not committed
+    assert not journal.exists()
 
 
 @pytest.mark.parametrize("committed", [False, True])
@@ -61,6 +98,18 @@ def test_package_integrity_and_contract(bundle):
         inspect_package(data + b"tampered", metadata)
     with pytest.raises(ManagerError, match="domain/version"):
         inspect_package(data, {**metadata, "version": "0.1.1"})
+
+
+def test_manual_special_files_cannot_be_adopted_or_replaced(tmp_path):
+    installer = Installer(tmp_path)
+    target, _, _ = installer.paths("demo")
+    target.mkdir()
+    os.mkfifo(target / "foreign-pipe")
+    with pytest.raises(ManagerError, match="special file"):
+        tree_fingerprints(target)
+    with pytest.raises(ManagerError, match="special file"):
+        installer.install("demo", {"__init__.py": b"replacement"}, True)
+    assert (target / "foreign-pipe").exists()
 
 
 @pytest.mark.parametrize(

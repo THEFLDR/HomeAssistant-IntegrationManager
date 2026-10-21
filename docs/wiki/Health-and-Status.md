@@ -44,6 +44,12 @@ Production absence record only while no Production instance owns that document.
 Once Production owns its registry, confirm a new registered integration's absence
 on Production itself. That action checks installed files and loaded code first;
 a subsequent unexpected local installation invalidates the absence confirmation.
+An explicitly requested uninstall completes its absence transition only after both
+files and loaded code are gone. Unexpected unmanaged files revoke that authorization;
+removing them does not silently restore confirmation. Production administrators can
+reconfirm verified absence in the panel's **Removed integrations** section, without
+registering or reinstalling the integration. Registered unmanaged integrations also
+return to an unconfirmed `not_installed` state after their files/code are removed.
 
 For promotion, registry documents, Production integration records and health are
 fresh for **two hours**, with at most 60 seconds future-clock tolerance. An unrelated

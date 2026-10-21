@@ -59,6 +59,7 @@ class Manager:
                 state="bootstrap",
             )
         for record in self.records.values():
+            record.progress = 0
             recovered = await self.hass.async_add_executor_job(
                 self.installer.recover, record.domain
             )
@@ -82,7 +83,11 @@ class Manager:
         disk = await self.hass.async_add_executor_job(
             tree_fingerprints, self.installer.components / record.domain
         )
-        if disk == pending["files"]:
+        restore = pending.get("operation") == "restore"
+        backup_exists = await self.hass.async_add_executor_job(
+            os.path.lexists, self.installer.work / f"{record.domain}.backup"
+        )
+        if disk == pending["files"] and (not restore or not backup_exists):
             record.installed = Release(**pending["release"])
             record.files = pending["files"]
             record.install_boot = pending["boot"]
@@ -90,7 +95,9 @@ class Manager:
             backup_files = await self.hass.async_add_executor_job(
                 tree_fingerprints, self.installer.work / f"{record.domain}.backup"
             )
-            if (
+            if restore:
+                record.backup_snapshot = None
+            elif (
                 prospective
                 and prospective.get("installed")
                 and backup_files == prospective["files"]
@@ -158,6 +165,9 @@ class Manager:
             "permissions": self.client.permissions,
             "registry_repository": self.registry,
             "integrations": integrations,
+            "removed_integrations": [
+                {"domain": domain, **tombstone} for domain, tombstone in self.tombstones.items()
+            ],
             "updates": sum(
                 bool(
                     r.available
@@ -184,6 +194,12 @@ class Manager:
             if exists or running:
                 tombstone["owner_confirmed"] = False
                 tombstone["state"] = "unmanaged" if exists else "verifying"
+                if exists:
+                    tombstone["absence_requested"] = False
+            else:
+                tombstone["state"] = "not_installed"
+                if tombstone.get("absence_requested") is True:
+                    tombstone["owner_confirmed"] = True
             tombstone.update(
                 {
                     "running_version": running,
@@ -209,6 +225,8 @@ class Manager:
                     if exists or record.running_version:
                         record.absence_confirmed = False
                         record.state = "unmanaged"
+                    elif record.state == "unmanaged":
+                        record.state = "not_installed"
                 continue
             try:
                 integration = loader.async_get_loaded_integration(self.hass, record.domain)
@@ -216,9 +234,18 @@ class Manager:
                     record.running_version = str(integration.version)
             except loader.IntegrationNotLoaded:
                 pass
-            disk = await self.hass.async_add_executor_job(
-                tree_fingerprints, self.installer.components / record.domain
-            )
+            try:
+                disk = await self.hass.async_add_executor_job(
+                    tree_fingerprints, self.installer.components / record.domain
+                )
+            except (ManagerError, OSError) as err:
+                record.state, record.health = "error", "unhealthy"
+                record.health_at, record.health_release_id = utcnow(), record.installed.release_id
+                record.health_boot = BOOT_ID
+                record.error = (
+                    str(err) if isinstance(err, ManagerError) else "Cannot verify installed files"
+                )
+                continue
             if disk != record.files:
                 record.state, record.health = "error", "unhealthy"
                 record.health_at = utcnow()
@@ -284,7 +311,10 @@ class Manager:
                         record.error = str(err)
                 self.last_check = utcnow()
                 for record in self.records.values():
-                    if record.promotion and record.promotion.get("state") == "unconfirmed":
+                    if record.promotion and record.promotion.get("state") in (
+                        "unconfirmed",
+                        "dispatched",
+                    ):
                         record.promotion["state"] = "dispatched"
                         self._watch(record.domain, record.promotion["request_id"])
                 await self.verify()
@@ -538,8 +568,13 @@ class Manager:
             )
             self.tombstones[domain] = {
                 "repository": record.repository,
-                "state": "unmanaged" if exists else "not_installed",
+                "state": "unmanaged"
+                if exists
+                else "verifying"
+                if record.running_version
+                else "not_installed",
                 "owner_confirmed": not exists and not record.running_version,
+                "absence_requested": not exists,
                 "updated_at": utcnow(),
                 "running_version": record.running_version,
                 "restart_pending": bool(record.running_version),
@@ -560,18 +595,32 @@ class Manager:
             )
             if not backup or not backup.get("installed") or actual != backup["files"]:
                 raise ManagerError("Retained backup does not match its verified identity")
-            record.state, record.health = "restoring", "unknown"
-            await self.save()
-            await self._heartbeat()
-            await self.hass.async_add_executor_job(self.installer.restore, domain)
-            record.installed = Release(**backup["installed"]) if backup.get("installed") else None
-            record.files = backup.get("files", {})
-            record.backup_snapshot, record.pending = None, None
-            record.install_boot = BOOT_ID
-            record.state, record.health = "pending_restart", "unknown"
-            record.error = "Backup restored; restart HA and verify activation"
-            await self.save()
-            await self._heartbeat()
+            record.pending = {
+                "operation": "restore",
+                "release": backup["installed"],
+                "files": backup["files"],
+                "boot": BOOT_ID,
+            }
+            record.state, record.health, record.health_at = "restoring", "unknown", None
+            record.health_release_id, record.health_boot = None, None
+            try:
+                await self.save()
+                await self._heartbeat()
+                await self.hass.async_add_executor_job(self.installer.restore, domain)
+                await self.reconcile_pending(record)
+                record.error = "Backup restored; restart HA and verify activation"
+                await self.save()
+                await self._heartbeat()
+            except (ManagerError, OSError) as err:
+                await self.reconcile_pending(record)
+                record.state = "error"
+                record.error = (
+                    str(err)
+                    if isinstance(err, ManagerError)
+                    else "Backup restore failed; previous files retained where possible"
+                )
+                await self.save()
+                raise ManagerError(record.error) from err
 
     async def report_health(
         self, domain: str, health: str, reported_version: str, release_id: int, sha256: str
@@ -599,13 +648,25 @@ class Manager:
 
     async def confirm_absent(self, domain: str, confirmation: str) -> None:
         if confirmation != f"production has not installed {domain}":
-            raise ManagerError(
-                "Explicit Sandbox owner confirmation of Production absence is required"
-            )
+            raise ManagerError("Explicit owner confirmation of Production absence is required")
         async with self.lock:
-            record = self.get(domain)
             if self.environment == "production":
                 await self.verify()
+                if domain in self.tombstones:
+                    tombstone = self.tombstones[domain]
+                    if (
+                        tombstone["state"] != "not_installed"
+                        or tombstone["running_version"]
+                        or tombstone["restart_pending"]
+                    ):
+                        raise ManagerError(
+                            "Production files or running code prevent absence confirmation"
+                        )
+                    tombstone.update({"owner_confirmed": True, "absence_requested": True})
+                    await self.save()
+                    await self._heartbeat()
+                    return
+                record = self.get(domain)
                 if record.installed or record.running_version or record.state != "not_installed":
                     raise ManagerError(
                         "Production files or running code prevent absence confirmation"
@@ -614,6 +675,7 @@ class Manager:
                 await self.save()
                 await self._heartbeat()
                 return
+            record = self.get(domain)
             production = await self.client.read_status(self.registry, "production")
             integrations = production.get("integrations", {})
             if production.get("instance_id"):
@@ -666,8 +728,9 @@ class Manager:
         validate_promotion(release, sandbox, production, domain)
 
     async def promote(self, domain: str) -> None:
-        await self.heartbeat()
         async with self.lock:
+            await self.verify()
+            await self._heartbeat()
             record = self.get(domain)
             await self.promotion_eligibility(domain)
             if record.promotion and record.promotion.get("state") in ("dispatched", "unconfirmed"):

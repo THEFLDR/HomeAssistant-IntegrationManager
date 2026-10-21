@@ -107,6 +107,11 @@ async def test_release_identity_and_digest(hass, pem, bundle):
     raw["assets"][0]["digest"] = "sha256:" + "0" * 64
     with pytest.raises(ManagerError, match="digest"):
         await github.release(release.repository, raw)
+    raw["assets"][0]["digest"] = f"sha256:{release.sha256}"
+    metadata.pop("domain")
+    github.asset.return_value = json.dumps(metadata).encode()
+    with pytest.raises(ManagerError, match="domain"):
+        await github.release(release.repository, raw)
 
 
 @pytest.mark.parametrize("payload", [b"{broken", b"[]", b"null", b'"string"', b"\xff"])

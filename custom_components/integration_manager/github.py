@@ -10,7 +10,7 @@ import aiohttp
 
 from .auth import assertion
 from .const import MAX_PACKAGE_BYTES, METADATA_NAME, PACKAGE_NAME
-from .models import ManagerError, Release, repository, version
+from .models import ManagerError, Release, domain_name, repository, version
 
 API = "https://api.github.com"
 API_VERSION = "2026-03-10"
@@ -199,6 +199,7 @@ class GitHubClient:
             raise ManagerError("Release metadata is not valid JSON") from err
         if not isinstance(metadata, dict):
             raise ManagerError("Release metadata must be a JSON object")
+        domain_name(metadata.get("domain"))
         digest = asset.get("digest", "")
         if (
             not isinstance(digest, str)

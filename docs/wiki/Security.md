@@ -31,7 +31,7 @@ The future Cloudflare certificate-management integration remains out of scope.
 On **21 October 2026**, the owner explicitly accepted temporary exceptions for exact
 stable HA 2026.10.2 pins: **Pillow 12.3.0** and **uv 0.12.23**. Fixed versions are
 Pillow 13.0.0 and uv 0.13.4, incompatible with Core's current exact declarations.
-The sixteen explicit advisory IDs are in
+The 18 explicit advisory IDs are in
 [`security/dependency-exceptions.json`](../../security/dependency-exceptions.json).
 Exceptions **expire on 4 November 2026** and authorize Sandbox 0.x development only.
 
@@ -80,6 +80,8 @@ exception is restricted to **0.12.23**, fixed in **0.13.4**. All expire on **4 N
 | [CVE-2026-112891](https://github.com/advisories/GHSA-fc9g-5qg7-mf45) | pillow 12.3.0 | medium | Pillow: Quadratic GIF comment copying during save | `>= 9.2.0, < 13.0.0` |
 | [CVE-2026-112405](https://github.com/advisories/GHSA-cp9v-662q-vvx9) | pillow 12.3.0 | high | Pillow: NULL pointer dereference in Image.merge via an unvalidated band 0 | `>= 12.0.0, < 13.0.0` |
 | [CVE-2026-112390](https://github.com/advisories/GHSA-22hg-r758-rrw9) | pillow 12.3.0 | high | Pillow: Infinite loop in MIC n_frames when the embedded TIFF | `>= 7.2.0, < 13.0.0` |
+| [CVE-2026-112401](https://github.com/advisories/GHSA-74r2-7ff9-mjj2) | pillow 12.3.0 | medium | Pillow: Quadratic GIF comment concatenation allows DoS in Image.open() | `>= 5.4.0, < 13.0.0` |
+| [CVE-2026-112901](https://github.com/advisories/GHSA-xgh8-jp6q-p5x8) | pillow 12.3.0 | medium | Pillow: ReDoS in XbmImagePlugin: 512-byte file stalls Image.open() for minutes | `<= 12.3.0` |
 
 Every entry was individually verified on **21 October 2026** against its linked GitHub Advisory Database API record and the package/version-specific PyPI vulnerability feed. The verified affected ranges above include the exact pinned dependency; the advisory records identify the fixed versions stated above. Core’s [2026.10.2 dependency metadata](https://pypi.org/pypi/homeassistant/2026.10.2/json) independently confirms that both pins are unavoidable with the selected current stable Core. The policy JSON records each source, severity, impact, affected range, verification date and justification. These are dependency exposures even though the manager does not directly invoke the affected paths.
 

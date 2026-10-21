@@ -81,6 +81,8 @@ def tree_fingerprints(path: Path) -> dict[str, str]:
     for file in path.rglob("*"):
         if file.is_symlink():
             raise ManagerError("Integration tree contains a symlink")
+        if not file.is_file() and not file.is_dir():
+            raise ManagerError("Integration tree contains a special file")
         if file.is_file() and "__pycache__" not in file.parts and file.suffix != ".pyc":
             result[file.relative_to(path).as_posix()] = sha256(file.read_bytes()).hexdigest()
     return result

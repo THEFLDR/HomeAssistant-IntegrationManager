@@ -4,6 +4,19 @@ from .const import HEALTH_MAX_AGE, STATUS_MAX_AGE
 from .models import ManagerError, Release, fresh, version
 
 
+def status_entry(document: dict, environment: str, domain: str) -> dict:
+    if not isinstance(document, dict) or (
+        document.get("schema_version") != 1 or document.get("environment") != environment
+    ):
+        raise ManagerError(f"Invalid {environment} status schema")
+    if not fresh(document.get("updated_at"), STATUS_MAX_AGE.total_seconds()):
+        raise ManagerError(f"Missing or stale {environment} status")
+    integrations = document.get("integrations", {})
+    if not isinstance(integrations, dict) or not isinstance(integrations.get(domain, {}), dict):
+        raise ManagerError(f"Invalid {environment} integrations status")
+    return integrations.get(domain, {})
+
+
 def allowed(release: Release, environment: str) -> bool:
     if environment == "sandbox":
         return release.prerelease
@@ -17,12 +30,7 @@ def validate_promotion(release: Release, sandbox: dict, production: dict, domain
     if not release.immutable:
         raise ManagerError("Release must be immutable")
     version(release.version)
-    for document, environment in ((sandbox, "sandbox"),):
-        if document.get("schema_version") != 1 or document.get("environment") != environment:
-            raise ManagerError(f"Invalid {environment} status schema")
-        if not fresh(document.get("updated_at"), STATUS_MAX_AGE.total_seconds()):
-            raise ManagerError(f"Missing or stale {environment} status")
-    status = sandbox.get("integrations", {}).get(domain, {})
+    status = status_entry(sandbox, "sandbox", domain)
     if (
         status.get("release") != release.identity()
         or status.get("installed_version") != release.version
@@ -39,13 +47,7 @@ def validate_promotion(release: Release, sandbox: dict, production: dict, domain
 
 def validate_production(release: Release, production: dict, domain: str) -> None:
     """Production version safety applies even to emergency overrides."""
-    if (
-        production.get("schema_version") != 1
-        or production.get("environment") != "production"
-        or not fresh(production.get("updated_at"), STATUS_MAX_AGE.total_seconds())
-    ):
-        raise ManagerError("Missing, invalid or stale production status")
-    prod = production.get("integrations", {}).get(domain, {})
+    prod = status_entry(production, "production", domain)
     if prod.get("repository") != release.repository:
         raise ManagerError("Production repository mapping is missing or inconsistent")
     if not fresh(prod.get("updated_at"), STATUS_MAX_AGE.total_seconds()):

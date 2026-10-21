@@ -31,7 +31,9 @@ def version(value: str) -> tuple[int, int, int]:
 
 
 def repository(value: str) -> str:
-    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+", value):
+    if not isinstance(value, str) or not re.fullmatch(
+        r"[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+", value
+    ):
         raise ManagerError("Expected GitHub owner/repository")
     if value.split("/")[1] in (".", ".."):
         raise ManagerError("Invalid repository")
@@ -39,7 +41,7 @@ def repository(value: str) -> str:
 
 
 def domain_name(value: str) -> str:
-    if not re.fullmatch(r"[a-z][a-z0-9_]*", value):
+    if not isinstance(value, str) or not re.fullmatch(r"[a-z][a-z0-9_]*", value):
         raise ManagerError("Invalid Home Assistant integration domain")
     return value
 

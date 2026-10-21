@@ -27,6 +27,9 @@ until the owner completes review.
 
 The owner selects **Promote to Stable** for the installed RC in HA. The backend
 refreshes activation/registry health and reads fresh status and release metadata.
+Preflight verifies local files and requires a successful status publication under
+the operation lock. Any verification or registry failure prevents dispatch; cached
+healthy status cannot substitute for a failed preflight.
 The workflow independently revalidates:
 
 - Exact repository, release ID, tag, commit, asset ID, version and SHA-256.
@@ -52,6 +55,8 @@ HA correlates the request with `promote-<request-id>`, displays the audited work
 URL and verifies the final release independently. A failed run or unconfirmed result
 is reported as failure/unknown outcome, never assumed successful. Inspect the audit
 run and check release metadata after a timeout before requesting another attempt.
+The dispatched release identity is persisted with the request. Installing another
+version while a workflow runs does not change which release its result verifies.
 
 ## Emergency owner override
 

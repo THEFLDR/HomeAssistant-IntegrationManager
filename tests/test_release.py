@@ -134,6 +134,26 @@ def test_workflow_rejects_nonobject_documents_before_mutation(bundle, target):
     assert not api.mutations
 
 
+@pytest.mark.parametrize("target", ["sandbox", "production"])
+@pytest.mark.parametrize("integrations", [[], {"demo": None}, {"demo": []}])
+def test_workflow_rejects_malformed_registry_entries_without_changes(bundle, target, integrations):
+    b = bundle()
+    api = WorkflowAPI(b)
+    getattr(api, target)["integrations"] = integrations
+    with pytest.raises(ManagerError, match="integrations status"):
+        promote(
+            api,
+            api,
+            b[0].repository,
+            "THEFLDR/HomeAssistant-IntegrationManager",
+            b[0].version,
+            "demo",
+            b[0].release_id,
+            b[0].sha256,
+        )
+    assert not api.mutations
+
+
 def test_emergency_override_bypasses_health_only(bundle):
     b = bundle()
     api = WorkflowAPI(b)

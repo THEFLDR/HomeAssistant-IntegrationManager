@@ -160,6 +160,16 @@ class IntegrationManagerPanel extends HTMLElement {
         }
       }
     }
+    if (this.state.removed_integrations && this.state.removed_integrations.length) {
+      const removed = this.node("section", undefined, main);
+      this.node("h2", "Removed integrations", removed);
+      for (const record of this.state.removed_integrations) {
+        this.node("p", `${record.repository} · ${record.domain} · ${record.state}${record.restart_pending ? " · Restart pending" : ""} · Absence ${record.owner_confirmed ? "confirmed" : "unconfirmed"}`, removed);
+        if (this.state.environment === "production" && !record.owner_confirmed) {
+          this.button(removed, `Confirm ${record.domain} is not installed`, "confirm_absent", { domain: record.domain }, record.state === "not_installed" && !record.restart_pending);
+        }
+      }
+    }
     const admin = this.node("section", undefined, main);
     this.node("h2", "Administration", admin);
     this.node("p", `Registry: ${this.state.registry_repository}. GitHub App permissions: ${JSON.stringify(this.state.permissions)}. Rotate credentials in Settings → Devices & services → Integration Manager → Configure.`, admin);

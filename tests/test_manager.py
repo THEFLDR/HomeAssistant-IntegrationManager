@@ -1,3 +1,4 @@
+import os
 from dataclasses import asdict
 from unittest.mock import AsyncMock, patch
 
@@ -119,6 +120,35 @@ async def test_promotion_dispatch_and_missing_production_bootstrap(manager, gith
         assert record.promotion["state"] == "dispatched"
 
 
+@pytest.mark.parametrize("failure", ["registry", "symlink", "special_file"])
+async def test_promotion_preflight_failure_never_dispatches(
+    manager, github, bundle, loaded, tmp_path, failure
+):
+    b = bundle()
+    github.add(b)
+    await manager.register(b[0].repository, "demo", True)
+    await manager.install("demo")
+    record = manager.get("demo")
+    record.install_boot = "previous-process"
+    with loaded("demo", "0.1.0"):
+        await manager.report_health("demo", "healthy", "0.1.0", b[0].release_id, b[0].sha256)
+        await manager.confirm_absent("demo", "production has not installed demo")
+        assert github.statuses["sandbox"]["integrations"]["demo"]["health"] == "healthy"
+        if failure == "registry":
+            github.write_status = AsyncMock(side_effect=ManagerError("registry unavailable"))
+        elif failure == "symlink":
+            foreign = tmp_path / "foreign.py"
+            foreign.write_text("preserve")
+            (manager.installer.components / "demo/foreign.py").symlink_to(foreign)
+        else:
+            os.mkfifo(manager.installer.components / "demo/foreign-pipe")
+        with pytest.raises(ManagerError):
+            await manager.promote("demo")
+        github.dispatch.assert_not_called()
+        if failure != "registry":
+            assert record.health == "unhealthy" and record.state == "error"
+
+
 async def test_status_ownership_and_single_writer(manager, github):
     github.statuses["sandbox"] = {"instance_id": "another-instance"}
     await manager.heartbeat()
@@ -232,6 +262,11 @@ async def test_production_confirms_own_absence_and_detects_unmanaged_code(
         await manager.verify()
         assert not manager.get("demo").absence_confirmed
         assert manager.get("demo").state == "unmanaged"
+    await manager.verify()
+    assert manager.get("demo").state == "not_installed"
+    assert not manager.get("demo").absence_confirmed
+    await manager.confirm_absent("demo", "production has not installed demo")
+    assert manager.get("demo").absence_confirmed
 
 
 @pytest.mark.parametrize("conclusion,expected", [("success", "succeeded"), ("failure", "failed")])
@@ -290,6 +325,87 @@ async def test_absence_tombstone_never_confirms_unmanaged_files(
     status = github.statuses["production"]["integrations"]["demo"]
     assert status["state"] == "unmanaged" and not status["owner_confirmed"]
     assert target.exists()
+    (target / "__init__.py").unlink()
+    target.rmdir()
+    await manager.heartbeat()
+    status = github.statuses["production"]["integrations"]["demo"]
+    assert status["state"] == "not_installed" and not status["owner_confirmed"]
+    await manager.confirm_absent("demo", "production has not installed demo")
+    assert github.statuses["production"]["integrations"]["demo"]["owner_confirmed"]
+
+
+async def test_active_uninstall_completes_absence_after_restart(manager, github, bundle, loaded):
+    github.add(bundle(ver="1.0.0", prerelease=False))
+    manager.environment = "production"
+    await manager.register("THEFLDR/demo", "demo", True)
+    await manager.install("demo")
+    manager.get("demo").install_boot = "previous-process"
+    with loaded("demo", "1.0.0"):
+        await manager.uninstall("demo", "uninstall demo")
+        await manager.heartbeat()
+        assert manager.tombstones["demo"]["state"] == "verifying"
+        assert not manager.tombstones["demo"]["owner_confirmed"]
+        with pytest.raises(ManagerError, match="running code"):
+            await manager.confirm_absent("demo", "production has not installed demo")
+    await manager.load()
+    await manager.heartbeat()
+    assert manager.tombstones["demo"]["state"] == "not_installed"
+    assert manager.tombstones["demo"]["owner_confirmed"]
+    assert manager.snapshot()["removed_integrations"][0]["domain"] == "demo"
+
+
+@pytest.mark.parametrize("same_version", [False, True])
+async def test_restore_preflight_failure_retains_the_current_and_backup_identity(
+    manager, github, bundle, same_version
+):
+    github.add(bundle())
+    await manager.register("THEFLDR/demo", "demo", True)
+    await manager.install("demo")
+    record = manager.get("demo")
+    record.install_boot = "previous-process"
+    if not same_version:
+        github.add(bundle(ver="0.1.1", rid=11))
+    await manager.check()
+    record.state = "error"
+    await manager.install("demo")
+    prior_identity = record.installed.identity()
+    backup_identity = record.backup_snapshot["installed"]
+    github.write_status = AsyncMock(side_effect=ManagerError("registry unavailable"))
+    with pytest.raises(ManagerError, match="registry unavailable"):
+        await manager.restore("demo", "restore demo")
+    assert record.installed.identity() == prior_identity
+    assert record.backup_snapshot["installed"] == backup_identity
+    assert (manager.installer.work / "demo.backup").exists()
+
+
+async def test_restore_crash_after_file_swap_reconciles_persisted_identity(manager, github, bundle):
+    first = bundle()
+    github.add(first)
+    await manager.register("THEFLDR/demo", "demo", True)
+    await manager.install("demo")
+    record = manager.get("demo")
+    record.install_boot = "previous-process"
+    github.add(bundle(ver="0.1.1", rid=11))
+    await manager.check()
+    await manager.install("demo")
+    save = manager.save
+
+    class SimulatedPowerLoss(BaseException):
+        pass
+
+    async def crash_before_identity_save():
+        if record.installed.version == "0.1.0" and record.pending is None:
+            raise SimulatedPowerLoss
+        await save()
+
+    with patch.object(manager, "save", new=crash_before_identity_save):
+        with pytest.raises(SimulatedPowerLoss):
+            await manager.restore("demo", "restore demo")
+    await manager.load()
+    record = manager.get("demo")
+    assert record.installed.identity() == first[0].identity()
+    assert record.backup_snapshot is None and record.pending is None
+    assert record.state in ("verifying", "pending_restart")
 
 
 @pytest.mark.parametrize("same_version", [False, True])
