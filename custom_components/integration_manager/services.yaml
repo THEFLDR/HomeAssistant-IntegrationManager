@@ -1,0 +1,27 @@
+report_health:
+  name: Report managed integration health
+  description: Report actual active health, bound to a version, release ID and artifact digest. Internal integration calls or HA administrators only.
+  fields:
+    domain:
+      required: true
+      selector:
+        text:
+    health:
+      required: true
+      selector:
+        select:
+          options: [healthy, unhealthy]
+    reported_version:
+      required: true
+      selector:
+        text:
+    release_id:
+      required: true
+      selector:
+        number:
+          min: 1
+          mode: box
+    sha256:
+      required: true
+      selector:
+        text:

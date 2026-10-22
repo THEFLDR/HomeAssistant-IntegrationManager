@@ -1,0 +1,33 @@
+{
+  "title": "Integration Manager",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect GitHub App",
+        "description": "Use an RSA private PEM key for your GitHub App installation. The key stays in a private file in Home Assistant storage. Production requires version 1.0.0 and security review.",
+        "data": {
+          "app_id": "App ID",
+          "client_id": "Client ID (identity reference)",
+          "installation_id": "Installation ID",
+          "private_key": "Private PEM key",
+          "environment": "Environment",
+          "registry_repository": "Status registry repository (owner/repository)"
+        }
+      }
+    },
+    "error": {"cannot_connect": "Cannot authenticate or store the key. Verify App ID, Installation ID, RSA PEM key, repository access and outgoing HTTPS."},
+    "abort": {
+      "single_instance_allowed": "Only one Integration Manager instance is supported per Home Assistant.",
+      "already_configured": "Integration Manager is already configured.",
+      "production_before_one": "Production installation is blocked before 1.0.0 and the security review."
+    }
+  },
+  "options": {
+    "step": {"init": {
+      "title": "GitHub App connection and key rotation",
+      "description": "Leave the PEM key empty to retain it. Environment and registry identity remain fixed to prevent status ownership conflicts.",
+      "data": {"app_id": "App ID", "client_id": "Client ID", "installation_id": "Installation ID", "private_key": "Replacement private PEM key"}
+    }},
+    "error": {"cannot_connect": "Cannot authenticate with these connection settings."}
+  }
+}
