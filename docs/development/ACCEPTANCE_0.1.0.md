@@ -35,7 +35,8 @@ contracts, actionlint 1.7.12 and the dependency audit are also run locally.
 Actionlint's downloaded binary was verified against its official release checksum.
 The complete locked pip installation was exercised. 25 owner-approved upstream
 advisories remain explicitly reported and expire on **4 November 2026**; see
-[Security](../wiki/Security.md). No verification or assertions were disabled to pass.
+[Security](https://github.com/THEFLDR/HomeAssistant-IntegrationManager/wiki/Security).
+No verification or assertions were disabled to pass.
 
 ## Live boundaries and owner actions
 
@@ -64,8 +65,10 @@ advisories remain explicitly reported and expire on **4 November 2026**; see
   unmerged development branch.
 - Browser/mobile behavior, custom-integration global Settings banners and full HA OS
   crash/power-loss recovery are not established by Python fixture/HTTP tests.
-- Wiki-ready English Markdown is included in the PR; no draft technical documentation
-  is published to an independent Wiki before implementation review.
+- English technical documentation is published in the
+  [native GitHub Wiki](https://github.com/THEFLDR/HomeAssistant-IntegrationManager/wiki).
+  The [migration report](WIKI_MIGRATION_REPORT.md) records publication and readback
+  verification; development and repository-specific engineering records remain here.
 - Import `docs/github/main-ruleset.json` manually only after reconciling the existing
   provisional ruleset and confirming the exact `CI / Validation` check name.
 
