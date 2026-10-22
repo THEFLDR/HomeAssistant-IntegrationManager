@@ -1,84 +1,54 @@
 # Native Wiki migration and contributor identity report
 
-Checked on **22 October 2026** for branch `codex/docs-wiki-migration`, following
-[the complete migration assignment](CODEX_WIKI_MIGRATION.md).
+Verified on **22 October 2026** on branch `codex/docs-wiki-migration`, following
+[the migration assignment](CODEX_WIKI_MIGRATION.md). The owner's later request also
+authorizes correcting the historical owner name from `Stefan Felder` to `THEFLDR`;
+repository protection and the ban on security-setting changes still apply.
 
-## Publication status: blocked; source pages preserved
+## Native Wiki publication: complete
 
-**Zero pages have been published or verified in the native GitHub Wiki.** All 11
-existing `docs/wiki/*.md` files remain byte-for-byte unchanged. No replacement Wiki,
-website, ongoing documentation copy or publishing workflow is introduced by this PR.
-
-The exact publication target is
+All **11 technical documentation pages and `_Sidebar.md`** are published in the
+[native GitHub Wiki](https://github.com/THEFLDR/HomeAssistant-IntegrationManager/wiki).
+The separate Git remote is
 `https://github.com/THEFLDR/HomeAssistant-IntegrationManager.wiki.git`.
-Both `git ls-remote` and an actual normal Git push to this native Wiki remote failed:
+Published commit: **`9d152719e4802226793d64254ff5a10acd3e698f`**.
 
-```text
-remote: Repository not found.
-fatal: repository 'https://github.com/THEFLDR/HomeAssistant-IntegrationManager.wiki.git/' not found
-```
+The first attempt failed with `Repository not found` before initialization. The
+owner created the initial Home page (`9efba70`), after which cloning and a normal
+fast-forward publication push succeeded. That initialization history was preserved;
+no Wiki history was force-pushed or unrelated page deleted.
 
-The push exited with status **128**. Repository API metadata reports `has_wiki: true`
-and the authenticated account's repository permissions include push/admin access.
-The session's `/user` response identifies `THEFLDR`. These checks establish repository
-access, not access to the separate Wiki Git repository. No repository setting was changed.
+A **second, fresh clone** read back every page and the sidebar. All 12 SHA-256 content
+hashes matched the intended published files. All 11 page URLs below returned HTTP 200
+at the native Wiki and contained their expected rendered page headings, without
+redirecting to the repository homepage. Cross-page links and heading fragments were
+checked against the published page names; engineering links were checked against
+files retained in `main`. Home and the sidebar provide navigation.
 
-Public HTTP GETs of both the
-[Wiki landing URL](https://github.com/THEFLDR/HomeAssistant-IntegrationManager/wiki)
-and [Home URL](https://github.com/THEFLDR/HomeAssistant-IntegrationManager/wiki/Home)
-returned HTTP 200 **after redirecting to the main repository homepage**. This does
-not verify a Wiki page. The observations are consistent with an uninitialized Wiki;
-they do not prove whether initialization or a credential-specific Wiki access
-restriction is the sole cause. The current tools cannot publish or read back that
-remote, so deleting source pages would violate the assignment.
-
-A temporary local Wiki Git checkout, outside the project repository, was prepared
-with the 11 pages and `_Sidebar.md` for the actual push attempt. It preserves page
-filenames/titles and substantive English content, converts cross-page `.md` links
-to native Wiki URLs, and converts engineering-file links to repository `blob/main`
-URLs. Its Home identifies the native Wiki as the documentation location. Local page,
-heading-fragment and repository-file targets passed checks before the push. These
-are preparation checks, **not evidence of successful remote publication**. Temporary
-workspace files are not a deliverable or a durable substitute for the native Wiki;
-recreate them from the preserved sources when access is available.
-
-| Preserved source page | Intended native page name; not yet published |
+| Migrated source | Verified native Wiki URL |
 | --- | --- |
-| `docs/wiki/Home.md` | `Home` |
-| `docs/wiki/Architecture.md` | `Architecture` |
-| `docs/wiki/Installation.md` | `Installation` |
-| `docs/wiki/GitHub-Configuration.md` | `GitHub-Configuration` |
-| `docs/wiki/Managed-Repositories.md` | `Managed-Repositories` |
-| `docs/wiki/Promotion-Workflow.md` | `Promotion-Workflow` |
-| `docs/wiki/Health-and-Status.md` | `Health-and-Status` |
-| `docs/wiki/Dashboard.md` | `Dashboard` |
-| `docs/wiki/Security.md` | `Security` |
-| `docs/wiki/Development.md` | `Development` |
-| `docs/wiki/Troubleshooting.md` | `Troubleshooting` |
+| `docs/wiki/Architecture.md` | [Architecture](https://github.com/THEFLDR/HomeAssistant-IntegrationManager/wiki/Architecture) |
+| `docs/wiki/Dashboard.md` | [Dashboard](https://github.com/THEFLDR/HomeAssistant-IntegrationManager/wiki/Dashboard) |
+| `docs/wiki/Development.md` | [Development](https://github.com/THEFLDR/HomeAssistant-IntegrationManager/wiki/Development) |
+| `docs/wiki/GitHub-Configuration.md` | [GitHub-Configuration](https://github.com/THEFLDR/HomeAssistant-IntegrationManager/wiki/GitHub-Configuration) |
+| `docs/wiki/Health-and-Status.md` | [Health-and-Status](https://github.com/THEFLDR/HomeAssistant-IntegrationManager/wiki/Health-and-Status) |
+| `docs/wiki/Home.md` | [Home](https://github.com/THEFLDR/HomeAssistant-IntegrationManager/wiki/Home) |
+| `docs/wiki/Installation.md` | [Installation](https://github.com/THEFLDR/HomeAssistant-IntegrationManager/wiki/Installation) |
+| `docs/wiki/Managed-Repositories.md` | [Managed-Repositories](https://github.com/THEFLDR/HomeAssistant-IntegrationManager/wiki/Managed-Repositories) |
+| `docs/wiki/Promotion-Workflow.md` | [Promotion-Workflow](https://github.com/THEFLDR/HomeAssistant-IntegrationManager/wiki/Promotion-Workflow) |
+| `docs/wiki/Security.md` | [Security](https://github.com/THEFLDR/HomeAssistant-IntegrationManager/wiki/Security) |
+| `docs/wiki/Troubleshooting.md` | [Troubleshooting](https://github.com/THEFLDR/HomeAssistant-IntegrationManager/wiki/Troubleshooting) |
 
-README links retain access to the preserved source pages and identify the native
-Wiki destination as pending. Existing engineering links stay valid. No target Wiki
-URL is represented as a verified published documentation page.
+Source page filenames and titles and substantive English content are preserved.
+Cross-page `.md` links now use native Wiki URLs; links to acceptance evidence,
+assignments and the dependency policy use repository `blob/main` URLs. Only staging
+language on Home and Development was updated to describe the published Wiki.
 
-## Owner action and completion procedure
-
-1. While signed in as `THEFLDR`, open the repository's **Wiki** tab. If offered,
-   create and save the first `Home` page to initialize the native Wiki. This is a
-   documentation publication action; no Ruleset or security-setting change is needed.
-2. Retry `git ls-remote` and clone the exact `.wiki.git` remote using the configured
-   identity. If it remains unavailable after a page exists, check whether this
-   environment's GitHub credential supports access to the Wiki repository. Do not
-   broaden the HA App's permissions or silently publish somewhere else.
-3. Fetch and preserve any pages already on the remote. Copy the 11 source pages,
-   preserve their titles/content, adapt links for GitHub Wiki, and add a useful
-   Home/sidebar. Push normally, without force-pushing or deleting unrelated pages.
-4. Clone the native Wiki into a second, fresh checkout. Compare all published pages
-   and navigation with the intended content, verify page names and heading links,
-   and confirm the rendered Wiki URLs do not redirect to the repository homepage.
-5. Only after those checks succeed, remove the migrated `docs/wiki/` files in this
-   development branch and replace repository documentation links with verified Wiki
-   URLs. Keep `docs/development/`, `docs/github/` and engineering files in the main
-   repository. Record the native Wiki commit and verified URLs in the PR.
+**Only after publication and fresh readback succeeded** were the migrated
+`docs/wiki/*.md` files removed from the development branch. README and acceptance
+links now target the verified Wiki. Development assignments, acceptance records,
+`docs/github/` and security policy files remain in the main repository. There is no
+second ongoing technical-documentation collection or alternate publishing platform.
 
 ## Contributor-attribution findings
 
@@ -129,14 +99,43 @@ to the owner, adding and verifying it in the owner's GitHub email settings may l
 eligible past commits; that is an optional owner action, not part of this task. Do not
 add an address the owner does not control. Neither changing future configuration nor
 waiting for cached statistics removes stored author names or guarantees removal of
-an existing contributor label. No merged history was rewritten.
+an existing contributor label. No remote history has been rewritten; see the owner-requested correction below.
+
+## Owner-requested history correction: blocked from remote application
+
+The owner subsequently requested renaming historical `Stefan Felder` commits to
+`THEFLDR`. This newer instruction supersedes the assignment's earlier prohibition
+on that specific correction; it does not authorize changing repository protections.
+
+Read-only inspection of active ruleset **`main` (`25578748`)** found an enforced
+**`non_fast_forward`** rule and **no bypass actors**, alongside PR/CI requirements.
+Replacing existing commits on `main` requires a non-fast-forward update, which that
+rule prohibits. No force push of `main` or other main-repository ref has been made,
+and no Ruleset, protection, App permission or repository security setting was changed.
+
+A local author-correction proposal and original-history backup are prepared for
+review outside the repository. It covers the current `main` and open development
+branch (six commits, four with the old owner name), changes the owner's raw
+author/committer identity where it is `Stefan Felder`
+to the verified `THEFLDR` noreply identity, and retains legitimate existing GitHub
+committer metadata. Every proposed commit must have exactly the original tree and
+message; parent IDs are mapped to corrected commits. Rewritten commits cannot retain
+the old GitHub signatures, and new commit IDs do not remove old objects retained by
+GitHub, merged PRs or other clones. The older deleted development branch and GitHub's
+PR refs are not silently rewritten. No published release tags currently exist.
+
+**The history correction is not applied remotely.** The owner must decide how to
+permit the required history replacement under repository governance; this task will
+not modify or bypass the active rule. No `.mailmap` substitute is presented as a
+rewrite of stored commits. Future work already uses the verified owner identity.
 
 ## Validation and scope
 
-- Compared all 11 source-page hashes with the assignment branch: unchanged.
-- Checked repository Markdown links and headings, and prepared native page/link targets.
+- Verified all 11 page titles and native Wiki URLs, and fresh-clone hashes for every
+  page plus sidebar before removing source copies.
+- Checked repository Markdown links and heading targets, plus Wiki page/heading links.
 - Ran the existing lightweight documentation/repository check and `git diff --check`.
-- Final self-review checks that the diff contains only Markdown documentation.
+- Final self-review confirms the PR contains only Markdown changes.
 - Application code, tests, dependencies, workflows, Rulesets, branch protection,
   repository security settings and GitHub App permissions remain unchanged.
-- No Copilot review requested. The PR stays open and unmerged.
+- No Copilot review requested. PR #3 remains open and unmerged.

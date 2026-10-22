@@ -27,7 +27,8 @@ printing private email addresses. Do not change global Git identity configuratio
 
 If the authenticated identity differs or verification is unavailable, report that
 limitation and retain legitimate attribution. Never impersonate the owner, invent a
-noreply ID, add false coauthors or rewrite merged history to change attribution.
+noreply ID or add false coauthors. Rewriting merged history requires an explicit
+owner request; even then, do not modify or bypass repository protection rules.
 GitHub's `web-flow` or other legitimate bot committer attribution may remain. Future
 configuration does not remove historical contributor or commit records.
 
