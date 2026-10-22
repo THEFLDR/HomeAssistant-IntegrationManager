@@ -271,6 +271,17 @@ class GitHubClient:
         if workflow != "promote.yml":
             raise ManagerError("HA may dispatch normal promotion only")
         info = await self.request("GET", f"/repos/{repository(repo)}")
+        try:
+            configured = await self.request("GET", f"/repos/{repo}/actions/workflows/{workflow}")
+        except GitHubError as err:
+            if err.status == 404:
+                raise ManagerError(
+                    "Install the managed-repository workflow bundle on this repository's "
+                    "default branch before promotion (promote.yml is missing or inaccessible)"
+                ) from None
+            raise
+        if configured.get("state") != "active":
+            raise ManagerError("Enable this repository's promote.yml workflow before promotion")
         await self.request(
             "POST",
             f"/repos/{repo}/actions/workflows/{workflow}/dispatches",

@@ -1,6 +1,7 @@
 import re
 from pathlib import Path
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -58,3 +59,63 @@ def test_release_dependencies_are_in_full_security_audit():
     development = dict(re.findall(pattern, (ROOT / "requirements-dev.lock").read_text(), re.M))
     release = dict(re.findall(pattern, (ROOT / "requirements-release.lock").read_text(), re.M))
     assert release and all(development.get(name) == pin for name, pin in release.items())
+
+
+def test_release_orchestrates_ci_with_minimum_dispatch_permission():
+    release = yaml.safe_load((ROOT / ".github/workflows/release.yml").read_text())
+    assert release["permissions"] == {"contents": "write", "checks": "read", "actions": "write"}
+    steps = release["jobs"]["publish"]["steps"]
+    validation = next(
+        i for i, step in enumerate(steps) if step.get("run", "").endswith("ensure-ci")
+    )
+    publish = next(i for i, step in enumerate(steps) if step.get("run", "").endswith("publish"))
+    assert validation < publish
+
+
+@pytest.mark.parametrize("matches", [False, True])
+def test_release_dispatch_checkout_must_match_expected_sha_before_full_ci(tmp_path, matches):
+    import os
+    import shutil
+    import subprocess
+
+    # Run the real detection step against a local git commit, before dependency installation.
+    git = shutil.which("git")
+    bash = shutil.which("bash")
+    assert git and bash
+    subprocess.run([git, "init", "-q", str(tmp_path)], check=True)  # noqa: S603 - local fixture paths
+    subprocess.run(  # noqa: S603 - resolved git executable and fixed fixture arguments
+        [
+            git,
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.invalid",
+            "commit",
+            "--allow-empty",
+            "-qm",
+            "fixture",
+        ],
+        cwd=tmp_path,
+        check=True,
+    )
+    sha = subprocess.check_output(  # noqa: S603 - resolved git executable, fixed arguments
+        [git, "rev-parse", "HEAD"], cwd=tmp_path, text=True
+    ).strip()
+    ci = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
+    step = next(s for s in ci["jobs"]["validation"]["steps"] if s.get("id") == "changes")
+    output = tmp_path / "output"
+    # Exercise the trusted repository workflow script, with no external code or inputs.
+    result = subprocess.run(  # noqa: S603
+        [bash, "-e", "-c", step["run"]],
+        cwd=tmp_path,
+        capture_output=True,
+        env={
+            **os.environ,
+            "EVENT_NAME": "workflow_dispatch",
+            "EXPECTED_SHA": sha if matches else "b" * 40,
+            "GITHUB_OUTPUT": str(output),
+        },
+        text=True,
+    )
+    assert result.returncode == (0 if matches else 1)
+    assert output.read_text() == "full=true\n" if matches else not output.exists()

@@ -3,8 +3,9 @@
 The entire functional scope is implemented together on `codex/0.1.0`. The owner
 maintains the assignment file; the latest review-budget update is incorporated.
 The owner's supplied functional concept governs
-metadata-only RC/Stable channels and explicit initial Production absence; its staged
-roadmap was superseded by the single-assignment request.
+metadata-only RC/Stable channels; its staged roadmap was superseded by the
+single-assignment request. The 22 October owner review explicitly removes Production
+confirmation for Sandbox-only 0.x promotion; Production protection begins at 1.0.0.
 
 ## Automated evidence
 
@@ -21,10 +22,12 @@ The PR records the final test count and check result.
 | Restart and health | Full-process boot gate, loaded version, exact identity, stale/old/unknown report rejection, health preserved through checks |
 | Central status | Read/write contract, size bound, ownership and explicit absent bootstrap; verified atomic local commits, cancellation/unload serialization, and no filesystem mutation after persistence/registry failure |
 | Promotion eligibility and execution | Strict local verification/status preflight, no dispatch on failure, shared Actions checks, dispatched identity preserved through later installation, no rebuild and idempotent metadata PATCH |
-| Production channel | Stable-only >=1.0.0 filtering; 0.x Production setup blocked; stale/unknown/equal-version Production blocks promotion |
+| Production channel | Stable-only >=1.0.0 filtering; 0.x Production setup blocked; missing Production permitted below 1.0.0; stale/unknown/equal-version Production blocks promotion from 1.0.0 |
 | Emergency override | Owner + triggering actor + explicit confirmation, manual dispatch, shared immutable/integrity/version checks; Production safety preserved |
 | Uninstall and self-update | Managed domain removal/retained backup, active uninstall completion after restart, explicit reconfirmation after unmanaged files, manager adoption and installed/running self-update transitions |
 | Dashboard and authorization | Real native panel registration, HTTP delivery of module/logo, real admin/non-admin WebSocket requests, pushed status subscription |
+| Exact release-commit CI | Squash/new SHA dispatches full CI once; exact full evidence reused, existing run awaited, docs-only evidence rejected, branch advance/failure/timeout block release mutation |
+| Multi-repository workflows | Generated foreign-repository bundle packages independently without HA, mocked publish then promotion use its vendored code; missing/disabled promote workflow blocks HA dispatch; missing inputs/lock and existing files stop preparation |
 | CI and security | One validation job, all five validation areas, docs-only successful path, pinned actions, hashed locks, Bandit and dependency audit |
 
 Ruff lint/format, Node syntax, deterministic package/branding/translation/ruleset
@@ -47,6 +50,14 @@ advisories remain explicitly reported and expire on **4 November 2026**; see
   test process. Actual App installation access, live download/install/restart,
   real integration-specific health, actual immutable promotion and self-update
   recovery must be exercised on Sandbox after owner review/merge and RC publication.
+- On each managed repository, review and merge the generated workflow bundle and
+  its real project CI commands/tests. Confirm its own RC publish and promotion,
+  central registry App access, enabled Actions and immutable release behavior.
+  The helper changes local files only; no foreign repository has been configured
+  or live-released by this assignment.
+- After merge, exercise a squash-SHA publish: automatic dispatch of exact full CI,
+  successful publication, failure rejection and reuse of existing full evidence.
+  This cross-workflow path cannot execute from this unmerged default-branch-only PR.
 - The owner configures the documented minimal App permissions, installation access,
   Actions identity variables and private-key secret. No such settings are modified
   by this assignment. Workflows requiring the default branch cannot run from this

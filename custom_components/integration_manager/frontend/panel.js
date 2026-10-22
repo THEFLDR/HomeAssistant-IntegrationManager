@@ -144,7 +144,10 @@ class IntegrationManagerPanel extends HTMLElement {
       configLink.href = `/config/integrations/dashboard?domain=${encodeURIComponent(record.domain)}`;
       if (this.state.environment === "sandbox") {
         this.button(actions, "Promote to Stable", "promote", { domain: record.domain }, record.promotion_eligible);
-        this.button(actions, "Confirm initial Production absence", "confirm_absent", { domain: record.domain });
+        const promotionVersion = record.installed?.version || record.available?.version;
+        if (promotionVersion && Number(promotionVersion.split(".")[0]) >= 1) {
+          this.button(actions, "Confirm initial Production absence", "confirm_absent", { domain: record.domain });
+        }
         if (record.promotion_blocker) this.node("p", record.promotion_blocker, card);
       }
       if (this.state.environment === "production" && !record.installed) {

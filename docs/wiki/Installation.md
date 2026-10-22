@@ -6,11 +6,12 @@ Read [security](Security.md) for the temporary Sandbox-only upstream advisories.
 
 ## First Sandbox installation
 
-1. After merge, validate the exact default-branch release commit with `CI - Validation`.
-   Dispatch CI on `main` only if that SHA has no successful validation. Publication
-   refuses a check from a different SHA; it does not rerun full CI itself.
-2. Run `Release - Publish` on the default branch with `version: 0.1.0`. Its immutable
-   RC contains `integration.zip` and `integration.json`. Check the package SHA-256
+1. After owner-approved merge, run `Release - Publish` on the default branch with
+   `version: 0.1.0`. It automatically obtains full CI for the exact release commit
+   if needed, including a new squash SHA; existing full evidence is reused. A
+   failure, timeout or branch advance prevents publication. No separate CI dispatch
+   is required.
+2. The immutable RC contains `integration.zip` and `integration.json`. Check the package SHA-256
    against both metadata and the GitHub asset digest before extraction.
 3. Copy `custom_components/integration_manager` from the package to HA's
    `custom_components` directory, keep an HA backup, and restart HA.

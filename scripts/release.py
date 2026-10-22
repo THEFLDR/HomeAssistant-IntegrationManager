@@ -6,6 +6,7 @@ import json
 import os
 import re
 import sys
+import time
 from hashlib import sha256
 from pathlib import Path
 from urllib.error import HTTPError
@@ -113,7 +114,7 @@ def registry_api(environment: dict, registry: str) -> API:
         f"/app/installations/{installation}/access_tokens",
         {
             "repositories": [repository(registry).split("/")[1]],
-            "permissions": {"contents": "read", "actions_variables": "read"},
+            "permissions": {"actions_variables": "read"},
         },
     )
     if result.get("permissions", {}).get("actions_variables") != "read":
@@ -212,7 +213,9 @@ def promote(
         raise ManagerError("Requested version, domain or artifact does not match release")
     if status_api is None:
         raise ManagerError("Status registry authentication is required for version safety")
-    production = read_status(status_api, registry, "production")
+    production = (
+        read_status(status_api, registry, "production") if version(ver) >= (1, 0, 0) else {}
+    )
     if override:
         validate_production(release, production, domain)
     else:
@@ -282,6 +285,57 @@ def validated_commit(api: API, repo: str, commit: str, checks: list[dict]) -> bo
     return False
 
 
+def ensure_ci(api: API, repo: str, commit: str, *, timeout: float = 1200) -> None:
+    """Reuse exact full evidence, wait for existing CI, or dispatch it once before publishing."""
+    repository(repo)
+    if not re.fullmatch(r"[0-9a-f]{40}", commit):
+        raise ManagerError("An exact release commit SHA is required")
+    info = api.request("GET", f"/repos/{repo}")
+    deadline = time.monotonic() + timeout
+    dispatched = False
+    previous_runs: set[int] = set()
+    while True:
+        latest = api.request("GET", f"/repos/{repo}/commits/{info['default_branch']}")
+        if latest["sha"] != commit:
+            raise ManagerError("Default branch advanced; publish its new commit after validation")
+        checks = api.request("GET", f"/repos/{repo}/commits/{commit}/check-runs?per_page=100")
+        if validated_commit(api, repo, commit, checks["check_runs"]):
+            return
+        runs = api.request(
+            "GET", f"/repos/{repo}/actions/workflows/ci.yml/runs?head_sha={commit}&per_page=100"
+        )["workflow_runs"]
+        pending = any(
+            run.get("head_sha") == commit and run.get("status") != "completed" for run in runs
+        )
+        if not pending and not dispatched:
+            previous_runs = {run["id"] for run in runs}
+            api.request(
+                "POST",
+                f"/repos/{repo}/actions/workflows/ci.yml/dispatches",
+                {"ref": info["default_branch"], "inputs": {"expected_sha": commit}},
+            )
+            dispatched = True
+        elif (
+            not pending
+            and dispatched
+            and any(
+                run.get("id") not in previous_runs
+                and run.get("head_sha") == commit
+                and run.get("event") == "workflow_dispatch"
+                and run.get("status") == "completed"
+                for run in runs
+            )
+        ):
+            raise ManagerError(
+                "Release CI did not supply successful full validation; inspect CI run"
+            )
+        if time.monotonic() >= deadline:
+            raise ManagerError(
+                "Timed out waiting for exact release-commit validation; no release created"
+            )
+        time.sleep(15)
+
+
 def publish(api: API, repo: str, source: Path, ver: str, commit: str) -> dict:
     repository(repo)
     version(ver)
@@ -293,9 +347,7 @@ def publish(api: API, repo: str, source: Path, ver: str, commit: str) -> dict:
         raise ManagerError("Publish only the exact current default-branch commit")
     runs = api.request("GET", f"/repos/{repo}/commits/{commit}/check-runs?per_page=100")
     if not validated_commit(api, repo, commit, runs["check_runs"]):
-        raise ManagerError(
-            "Exact release commit lacks successful CI / Validation; dispatch CI for that SHA"
-        )
+        raise ManagerError("Exact release commit lacks successful full CI / Validation")
     manifest = json.loads((source / "manifest.json").read_text())
     if manifest["version"] != ver:
         raise ManagerError("Requested release differs from integration manifest")
@@ -344,7 +396,8 @@ def publish(api: API, repo: str, source: Path, ver: str, commit: str) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "operation", choices=["package", "publish", "promote", "override", "authorize-override"]
+        "operation",
+        choices=["package", "ensure-ci", "publish", "promote", "override", "authorize-override"],
     )
     parser.add_argument("--source", default="custom_components/integration_manager")
     parser.add_argument("--output", default="dist")
@@ -370,6 +423,14 @@ def main() -> None:
     info = api.request("GET", f"/repos/{repo}")
     if env.get("GITHUB_REF") != f"refs/heads/{info['default_branch']}":
         raise ManagerError("Privileged releases execute on the default branch only")
+    if args.operation == "ensure-ci":
+        version(ver)
+        manifest = json.loads((Path(args.source) / "manifest.json").read_text())
+        if manifest["version"] != ver:
+            raise ManagerError("Requested release differs from integration manifest")
+        ensure_ci(api, repo, env["GITHUB_SHA"])
+        print("Exact release commit has successful full CI validation")
+        return
     if args.operation == "publish":
         result = publish(api, repo, Path(args.source), ver, env["GITHUB_SHA"])
     else:

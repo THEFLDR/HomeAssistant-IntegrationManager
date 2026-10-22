@@ -4,6 +4,11 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, edited]
   workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Optional exact release commit; fail if the branch moved before dispatch
+        type: string
+        required: false
 
 permissions:
   contents: read
@@ -30,12 +35,17 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_BRANCH: ${{ github.head_ref }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
         run: |
           if [ "$EVENT_NAME" = pull_request ] && [ "$PR_TITLE" != "PR - $PR_BRANCH" ]; then
             echo 'Pull request title must be PR - <branch-name>' >&2
             exit 1
           fi
           if [ "$EVENT_NAME" = workflow_dispatch ]; then
+            if [ -n "$EXPECTED_SHA" ] && [ "$(git rev-parse HEAD)" != "$EXPECTED_SHA" ]; then
+              echo "Release commit changed before validation" >&2
+              exit 1
+            fi
             echo 'full=true' >> "$GITHUB_OUTPUT"
           else
             git diff --name-only "$BASE_SHA" HEAD > "$RUNNER_TEMP/im-changes"

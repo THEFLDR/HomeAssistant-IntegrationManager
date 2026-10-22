@@ -58,7 +58,7 @@ def test_channel_and_semver(bundle):
 
 
 def test_normal_promotion_and_explicit_bootstrap(bundle):
-    release, _, _ = bundle()
+    release, _, _ = bundle(ver="1.0.0")
     sandbox, production = documents(release)
     validate_promotion(release, sandbox, production, "demo")
     with pytest.raises(ManagerError, match="production"):
@@ -108,3 +108,12 @@ def test_stale_or_old_production_blocks(bundle):
     production["updated_at"] = (datetime.now(UTC) - timedelta(hours=3)).isoformat()
     with pytest.raises(ManagerError, match="stale"):
         validate_promotion(release, sandbox, production, "demo")
+
+
+def test_pre_one_promotion_needs_no_production_record_but_keeps_sandbox_gates(bundle):
+    release, _, _ = bundle(ver="0.9.9")
+    sandbox, _ = documents(release)
+    validate_promotion(release, sandbox, {}, "demo")
+    sandbox["integrations"]["demo"]["health"] = "unknown"
+    with pytest.raises(ManagerError, match="exact release"):
+        validate_promotion(release, sandbox, {}, "demo")

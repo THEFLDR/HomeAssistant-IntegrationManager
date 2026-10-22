@@ -23,7 +23,9 @@ Existing HA config entry titles are shown before uninstall; configuration/user d
 are not deleted. Destructive operations require domain-specific typed confirmation.
 
 Sandbox offers RCs and a promotion button only when the cached current eligibility
-checks pass; backend and Actions checks remain authoritative. Production has no
+checks pass; backend and Actions checks remain authoritative. Production absence
+confirmation is shown only for target versions from 1.0.0 onward; 0.x promotion
+needs only the applicable Sandbox and artifact checks. Production has no
 promotion or RC installation path. Emergency override is never exposed in HA.
 
 Each approved integration has one native update entity and one diagnostic health

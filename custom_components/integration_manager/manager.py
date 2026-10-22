@@ -459,7 +459,14 @@ class Manager:
         # Persistence must succeed before declaring the manager's storage health.
         await self.save()
         await self.client.write_status(self.registry, self.environment, self.status_document())
-        self.production_snapshot = await self.client.read_status(self.registry, "production")
+        self.production_snapshot = (
+            await self.client.read_status(self.registry, "production")
+            if any(
+                r.installed and version(r.installed.version) >= (1, 0, 0)
+                for r in self.records.values()
+            )
+            else {}
+        )
         self.last_registry = utcnow()
         self.error = f"Missing GitHub App permissions: {', '.join(missing)}" if missing else None
 
@@ -818,7 +825,11 @@ class Manager:
         if not release.prerelease:
             raise ManagerError("Release is already Stable")
         sandbox = await self.client.read_status(self.registry, "sandbox")
-        production = await self.client.read_status(self.registry, "production")
+        production = (
+            await self.client.read_status(self.registry, "production")
+            if version(release.version) >= (1, 0, 0)
+            else {}
+        )
         validate_promotion(release, sandbox, production, domain)
 
     async def promote(self, domain: str) -> None:

@@ -122,7 +122,7 @@ def test_workflow_rejects_manipulated_or_unverified_status(bundle, field, value)
 def test_contradictory_production_absence_never_bypasses_version_safety(
     bundle, override, field, value
 ):
-    b = bundle()
+    b = bundle(ver="1.0.0")
     api = WorkflowAPI(b)
     api.production["integrations"]["demo"][field] = value
     with pytest.raises(ManagerError, match="Production is unknown"):
@@ -136,7 +136,7 @@ def test_contradictory_production_absence_never_bypasses_version_safety(
             b[0].release_id,
             b[0].sha256,
             override=override,
-            confirmation="THEFLDR authorizes promotion of v0.1.0",
+            confirmation="THEFLDR authorizes promotion of v1.0.0",
             environment=owner_environment(),
         )
     assert not api.mutations
@@ -144,7 +144,7 @@ def test_contradictory_production_absence_never_bypasses_version_safety(
 
 @pytest.mark.parametrize("target", ["metadata", "production"])
 def test_workflow_rejects_nonobject_documents_before_mutation(bundle, target):
-    b = bundle()
+    b = bundle(ver="1.0.0")
     api = WorkflowAPI(b)
     setattr(api, target, [])
     with pytest.raises(ManagerError, match="JSON object|registry document"):
@@ -164,7 +164,7 @@ def test_workflow_rejects_nonobject_documents_before_mutation(bundle, target):
 @pytest.mark.parametrize("target", ["sandbox", "production"])
 @pytest.mark.parametrize("integrations", [[], {"demo": None}, {"demo": []}])
 def test_workflow_rejects_malformed_registry_entries_without_changes(bundle, target, integrations):
-    b = bundle()
+    b = bundle(ver="1.0.0")
     api = WorkflowAPI(b)
     getattr(api, target)["integrations"] = integrations
     with pytest.raises(ManagerError, match="integrations status"):
@@ -254,14 +254,14 @@ def test_override_incomplete_confirmation_rejected():
 
 
 def test_override_retains_production_version_gate(bundle):
-    b = bundle()
+    b = bundle(ver="1.0.0")
     api = WorkflowAPI(b)
     api.production["integrations"]["demo"].update(
         {
             "state": "active",
             "repository": b[0].repository,
-            "running_version": "0.1.0",
-            "installed_version": "0.1.0",
+            "running_version": "1.0.0",
+            "installed_version": "1.0.0",
         }
     )
     with pytest.raises(ManagerError, match="newer"):
@@ -270,12 +270,12 @@ def test_override_retains_production_version_gate(bundle):
             api,
             b[0].repository,
             "THEFLDR/HomeAssistant-IntegrationManager",
-            "0.1.0",
+            "1.0.0",
             "demo",
             b[0].release_id,
             b[0].sha256,
             override=True,
-            confirmation="THEFLDR authorizes promotion of v0.1.0",
+            confirmation="THEFLDR authorizes promotion of v1.0.0",
             environment=owner_environment(),
         )
     assert not api.mutations
@@ -404,7 +404,7 @@ def test_registry_jwt_scope_is_read_only(pem):
         payload = api.return_value.request.call_args.args[2]
         assert payload == {
             "repositories": ["homeassistant-integrationmanager"],
-            "permissions": {"contents": "read", "actions_variables": "read"},
+            "permissions": {"actions_variables": "read"},
         }
 
 
@@ -425,3 +425,28 @@ def test_workflow_promotion_accepts_repository_case_without_weakening_identity(b
     )
     assert result["release"] == b[0].identity()
     assert len(api.mutations) == 1
+
+
+def test_pre_one_workflow_does_not_read_missing_production_status(bundle):
+    from unittest.mock import Mock
+
+    b = bundle()
+    api = WorkflowAPI(b)
+    original = api.request
+
+    def request(method, path, *args, **kwargs):
+        assert "IM_STATUS_PRODUCTION" not in path
+        return original(method, path, *args, **kwargs)
+
+    api.request = Mock(side_effect=request)
+    result = promote(
+        api,
+        api,
+        b[0].repository,
+        "THEFLDR/HomeAssistant-IntegrationManager",
+        b[0].version,
+        "demo",
+        b[0].release_id,
+        b[0].sha256,
+    )
+    assert result["result"] == "stable"

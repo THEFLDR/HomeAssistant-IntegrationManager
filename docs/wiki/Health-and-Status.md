@@ -51,7 +51,12 @@ reconfirm verified absence in the panel's **Removed integrations** section, with
 registering or reinstalling the integration. Registered unmanaged integrations also
 return to an unconfirmed `not_installed` state after their files/code are removed.
 
-For promotion, registry documents, Production integration records and health are
+Below 1.0.0 promotion does not require or read Production status; no Production
+absence confirmation is needed. For releases from 1.0.0, Production comparison and
+explicit initial absence remain mandatory. Sandbox registry and health checks
+apply to every normal promotion.
+
+For the applicable promotion checks, registry documents, integration records and health are
 fresh for **two hours**, with at most 60 seconds future-clock tolerance. An unrelated
 integration's heartbeat cannot freshen an old bootstrap record. Missing, inconsistent
 or stale state is unknown and blocks normal promotion. `not_installed` requires

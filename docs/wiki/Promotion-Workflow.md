@@ -15,15 +15,28 @@ immutability, tag commit and package hash. Existing tags are never reused; a bro
 version requires a new PATCH version. A failed draft upload stays a draft for owner
 inspection, never a falsely successful release.
 
-CI has no duplicate push-on-main trigger. If a merge strategy creates a new commit
-SHA, a passing PR-head check does not establish validation of that new SHA. Dispatch
-the same `CI - Validation` workflow on the intended release SHA/default branch once
-when needed. Publishing refuses missing evidence and never reruns full CI when the
-exact commit already passed. A docs-only lightweight check does not replace full
-release validation. The implementation PR itself must remain open/unmerged
-until the owner completes review.
+CI has no push-on-main trigger. Publishing first reuses successful **full** validation
+for its exact commit. If CI for that SHA is already running, it waits. Otherwise it
+automatically dispatches the same `CI - Validation` workflow once on the default
+branch, passing `expected_sha`, and waits up to 20 minutes. This covers the new SHA
+created by a squash merge. A PR-head check or docs-only green check cannot authorize
+publication. Manual/dispatch CI always runs all five areas; docs-only PRs retain their
+lightweight green path. No second full run occurs when exact full evidence exists.
+
+The CI checkout must match `expected_sha`; a branch advance before or during the
+wait aborts publication. Publishing rechecks exact current-branch identity and full
+CI evidence before creating a draft. Failed/cancelled CI or a timeout creates no
+release; inspect the CI run before retrying. `Release - Publish` needs Actions write
+to dispatch CI; dispatched validation itself has only Contents read, no App secret.
+GitHub explicitly permits `workflow_dispatch` events using `GITHUB_TOKEN` to start
+another workflow. All workflow files must already be on the default branch.
 
 ## Normal promotion from Sandbox
+
+The target repository must first have its own installed workflow bundle and
+configured registry credentials; see [managed setup](Managed-Repositories.md#workflow-installation).
+HA checks that its `promote.yml` is active before dispatch; missing/disabled workflows
+produce an actionable error. This check cannot prove secrets are correctly configured.
 
 The owner selects **Promote to Stable** for the installed RC in HA. The backend
 refreshes activation/registry health and reads fresh status and release metadata.
@@ -36,10 +49,13 @@ The workflow independently revalidates:
 - Immutable published package and matching manifest, metadata and GitHub digest.
 - Sandbox installed and running version, completed restart, active state, healthy
   observation for that exact release, and current registry/health timestamps.
-- Production version is older, or a fresh, explicit owner-confirmed `not_installed`
-  record exists. Missing Production status is unknown, including during 0.x.
+- Below **1.0.0**, Production status is neither required nor read: these releases
+  are Sandbox-only. Missing Production status needs no confirmation.
+- From **1.0.0**, Production version is older, or a fresh, explicit owner-confirmed
+  `not_installed` record exists. Missing, stale or inconsistent Production state blocks.
 
-Before the first Production installation, use **Confirm initial Production absence**
+For promotion of **1.0.0 or later**, before the first Production installation, use
+**Confirm initial Production absence**
 and type the requested domain-specific confirmation. This never overwrites an active
 Production instance record. Bootstrap confirmation expires with status freshness;
 the owner may explicitly reconfirm absence before another promotion. No Production
@@ -68,9 +84,11 @@ before mutation and again in the shared promotion implementation.
 
 It bypasses Sandbox install/activation/health eligibility only. Production version
 safety, canonical version, immutable release, manifest/domain and all identity/digest
-checks still apply. It still needs fresh Production status or an explicit initial
-absence record, readable through the scoped registry token. Audit output identifies
-override, actors, run ID, release identity and final result.
+checks still apply. From 1.0.0 it still needs fresh Production status or an explicit
+initial absence record, readable through the scoped registry token. The same Sandbox-only
+Production exemption applies below 1.0.0; immutable identity and integrity checks
+are always mandatory. Audit output identifies override, actors, run ID, release
+identity and final result.
 
 The owner approved this platform limitation: GitHub does not reliably distinguish
 `workflow_dispatch` initiated through UI, CLI or API. Therefore owner identity and

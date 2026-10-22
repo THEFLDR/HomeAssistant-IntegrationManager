@@ -51,7 +51,9 @@ def validate_promotion(release: Release, sandbox: dict, production: dict, domain
 
 
 def validate_production(release: Release, production: dict, domain: str) -> None:
-    """Production version safety applies even to emergency overrides."""
+    """Production version safety starts at the first Production release, including overrides."""
+    if version(release.version) < (1, 0, 0):
+        return
     prod = status_entry(production, "production", domain)
     if (
         not isinstance(prod.get("repository"), str)

@@ -158,3 +158,25 @@ async def test_unexpected_redirect_and_override_rejected(hass, pem, aioclient_mo
         await github.asset("THEFLDR/demo", 1)
     with pytest.raises(ManagerError, match="normal promotion only"):
         await github.dispatch("THEFLDR/demo", "override.yml", {})
+
+
+@pytest.mark.parametrize("state", ["missing", "disabled_manually", "active"])
+async def test_foreign_repository_requires_its_own_active_promotion_workflow(hass, pem, state):
+    github = client(hass, pem)
+    workflow = (
+        GitHubError("GET", "/workflows/promote.yml", 404)
+        if state == "missing"
+        else {"state": state}
+    )
+    github.request = AsyncMock(side_effect=[{"default_branch": "main"}, workflow, None])
+    if state == "active":
+        await github.dispatch("thefldr/another-integration", "promote.yml", {})
+        assert github.request.call_args.args == (
+            "POST",
+            "/repos/thefldr/another-integration/actions/workflows/promote.yml/dispatches",
+        )
+        assert github.request.call_args.kwargs["body"]["ref"] == "main"
+    else:
+        with pytest.raises(ManagerError, match="workflow|promote.yml"):
+            await github.dispatch("thefldr/another-integration", "promote.yml", {})
+        assert all(call.args[0] == "GET" for call in github.request.call_args_list)

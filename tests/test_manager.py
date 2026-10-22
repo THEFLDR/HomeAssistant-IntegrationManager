@@ -98,7 +98,9 @@ async def test_production_only_offers_stable_at_least_one(manager, github, bundl
     assert manager.get("demo").installed.version == "1.0.0"
 
 
-async def test_promotion_dispatch_and_missing_production_bootstrap(manager, github, bundle, loaded):
+async def test_pre_one_promotion_dispatch_without_production_bootstrap(
+    manager, github, bundle, loaded
+):
     b = bundle()
     github.add(b)
     await manager.register(b[0].repository, "demo", True)
@@ -113,9 +115,7 @@ async def test_promotion_dispatch_and_missing_production_bootstrap(manager, gith
             record.installed.release_id,
             record.installed.sha256,
         )
-        with pytest.raises(ManagerError, match="production"):
-            await manager.promote("demo")
-        await manager.confirm_absent("demo", "production has not installed demo")
+        assert "production" not in github.statuses
         assert manager.snapshot()["integrations"][1]["promotion_eligible"]
         with patch.object(manager, "_watch"):
             await manager.promote("demo")

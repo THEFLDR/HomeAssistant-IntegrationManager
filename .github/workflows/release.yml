@@ -11,7 +11,7 @@ on:
 permissions:
   contents: write
   checks: read
-  actions: read
+  actions: write
 
 concurrency:
   group: release-publish
@@ -22,7 +22,7 @@ jobs:
     name: Publish immutable RC
     if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -30,6 +30,11 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.14.8'
+      - name: Reuse or automatically obtain full validation of this release commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IM_VERSION: ${{ inputs.version }}
+        run: python scripts/release.py ensure-ci
       - name: Publish once from an exact successful CI commit
         env:
           GH_TOKEN: ${{ github.token }}

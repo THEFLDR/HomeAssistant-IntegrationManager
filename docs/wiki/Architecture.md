@@ -36,3 +36,17 @@ custom update entity is not guaranteed by HA and is not assumed.
 Files and HA Store survive restarts. Timers, subscriptions, in-memory tokens and
 promotion watchers are restarted by HA. Persisted promotion requests are rechecked
 against their audited workflow and final release identity.
+
+Release workflows execute **inside each managed repository**. The Integration Manager
+repository supplies a local preparation command that vendors the shared release
+contracts and creates per-repository publish/promotion/override workflows and one
+project-specific CI workflow. No runtime fetch of mutable shared workflow code or
+central cross-repository release writer is introduced. Each repository's Actions
+token writes its own releases; a separate downscoped App token reads only Variables
+in the central registry. Install/review/merge the bundle before releasing there.
+
+Publishing orchestrates exact-commit CI on demand, reusing completed full evidence
+and waiting for existing runs before dispatching once. This handles squash merges
+without duplicate full validation after every merge. Below 1.0.0, promotion checks
+Sandbox activation/health and artifact identity without consulting Production; the
+Production comparison and explicit absence bootstrap apply from 1.0.0 onward.

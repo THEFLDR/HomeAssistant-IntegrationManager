@@ -48,8 +48,11 @@ Pull requests trigger CI, superseded runs cancel, dependencies install once and 
 pip cache. Both validation paths select the supported Python version. Docs-only PRs
 keep the required check present/green with lightweight JSON, branding, translation
 and ruleset contract checks, skipping dependency installation and full tests. PR title
-edits also trigger validation. No push-on-main duplicate or release-time automatic full rerun exists.
-Manual CI is available to establish evidence for an exact new release commit SHA.
+edits also trigger validation. There is no push-on-main duplicate. Publishing reuses
+exact full evidence, waits for existing CI, or automatically dispatches the same
+workflow once for a new release SHA (including squash merges). `expected_sha` rejects
+branch movement. A manual/dispatch run is always full; lightweight evidence is never
+accepted for publication. See [release validation](Promotion-Workflow.md#publish).
 All PR titles must be `PR - <branch-name>`.
 
 ## Review budget
